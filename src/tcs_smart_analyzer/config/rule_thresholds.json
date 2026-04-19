@@ -1,0 +1,32 @@
+{
+  "DQ-001": {
+    "threshold": 0.02,
+    "unit": "ratio",
+    "source": "fixed"
+  },
+  "SCN-001": {
+    "threshold": 1.0,
+    "unit": "count",
+    "source": "fixed"
+  },
+  "PERF-001": {
+    "threshold": 0.18,
+    "unit": "ratio",
+    "source": "fixed"
+  },
+  "PERF-002": {
+    "threshold": 0.2,
+    "unit": "s",
+    "source": "fixed"
+  },
+  "STB-001": {
+    "threshold": 8.0,
+    "unit": "m/s^3",
+    "source": "historical_recommendation"
+  },
+  "STB-002": {
+    "threshold": 6.0,
+    "unit": "Hz",
+    "source": "historical_recommendation"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "deprecated": true,
+  "kind": "kpis",
+  "note": "该文件已废弃，仅为兼容保留。当前生效入口请改用 src/tcs_smart_analyzer/config/kpi_specs/ 目录。",
+  "current_entry": "kpi_specs/",
+  "read_only_reference": true,
+  "definitions": []
+}

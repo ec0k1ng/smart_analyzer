@@ -1,0 +1,4 @@
+__pycache__/
+*.py[cod]
+/installer_release/
+/outputs_gui/

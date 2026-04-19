@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>TCS 打滑控制自动分析报告</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #1f2937; }
+    h1, h2 { color: #155e75; }
+    .hero { padding: 16px 18px; background: linear-gradient(135deg, #ecfeff, #e0f2fe); border: 1px solid #bae6fd; margin-bottom: 18px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .card { min-width: 180px; padding: 12px; border: 1px solid #dbeafe; background: #f8fafc; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 13px; }
+    th { background: #f0f9ff; text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>TCS 打滑控制自动分析报告</h1>
+    <p>数据文件：sample_data\tcs_demo.csv</p>
+    <p>工况摘要：共识别 1 个事件: launch_slip</p>
+    <p>生成时间：2026-04-11T12:32:03+08:00</p>
+  </div>
+
+  <div class="cards">
+    <div class="card"><strong>事件数</strong><div>1</div></div>
+    <div class="card"><strong>规则数</strong><div>5</div></div>
+    <div class="card"><strong>KPI 数</strong><div>6</div></div>
+  </div>
+
+  <h2>KPI</h2>
+  <table>
+    <thead><tr><th>名称</th><th>数值</th><th>单位</th><th>说明</th></tr></thead>
+    <tbody>
+    
+      <tr><td>max_jerk_mps3</td><td>2.8000000000000007</td><td>m/s^3</td><td>全程最大纵向冲击度</td></tr>
+    
+      <tr><td>max_rear_wheel_delta_kph</td><td>0.5</td><td>kph</td><td>后轴左右轮速最大差值</td></tr>
+    
+      <tr><td>max_torque_cut_nm</td><td>112.0</td><td>Nm</td><td>全程最大扭矩切减幅值</td></tr>
+    
+      <tr><td>mean_vehicle_speed_kph</td><td>8.015999999999998</td><td>kph</td><td>平均车速</td></tr>
+    
+      <tr><td>peak_slip_ratio</td><td>1.7727272727272723</td><td>ratio</td><td>全程最大驱动轮打滑率</td></tr>
+    
+      <tr><td>tcs_active_time_s</td><td>0.75</td><td>s</td><td>TCS 激活总时长</td></tr>
+    
+    </tbody>
+  </table>
+
+  <h2>规则结果</h2>
+  <table>
+    <thead><tr><th>Rule ID</th><th>标题</th><th>状态</th><th>测量值</th><th>阈值</th><th>说明</th></tr></thead>
+    <tbody>
+    
+      <tr><td>DQ-001</td><td>关键字段缺失率</td><td>pass</td><td>0.0</td><td>0.02</td><td>关键字段完整性满足要求</td></tr>
+    
+      <tr><td>PERF-001</td><td>峰值打滑率</td><td>fail</td><td>1.7727272727272723</td><td>0.15</td><td>峰值打滑率超限</td></tr>
+    
+      <tr><td>PERF-002</td><td>扭矩切减响应</td><td>pass</td><td>0.1</td><td>0.2</td><td>扭矩切减响应满足目标</td></tr>
+    
+      <tr><td>SCN-001</td><td>TCS 工况识别覆盖</td><td>pass</td><td>1.0</td><td>1.0</td><td>已识别 1 个 TCS 事件</td></tr>
+    
+      <tr><td>STB-001</td><td>纵向冲击度</td><td>pass</td><td>2.8000000000000007</td><td>8.0</td><td>纵向冲击度正常</td></tr>
+    
+    </tbody>
+  </table>
+</body>
+</html>

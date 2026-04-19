@@ -1,0 +1,30 @@
+{
+  "groups": [
+    {
+      "key": "tcs",
+      "name": "TCS_均一",
+      "kpis": [
+        "peak_slip_ratio",
+        "tcs_active_time_s"
+      ],
+      "is_builtin": false
+    },
+    {
+      "key": "111",
+      "name": "TCS对开",
+      "kpis": [
+        "max_jerk_mps3",
+        "peak_slip_ratio"
+      ],
+      "is_builtin": false
+    },
+    {
+      "key": "abs",
+      "name": "ABS制动",
+      "kpis": [
+        "max_jerk_mps3"
+      ],
+      "is_builtin": false
+    }
+  ]
+}

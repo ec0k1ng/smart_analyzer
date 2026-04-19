@@ -1,0 +1,156 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>TCS 分析报告</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #1f2937; }
+    h1, h2 { color: #0f766e; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 13px; }
+    th { background: #ecfeff; text-align: left; }
+    .pass { color: #166534; font-weight: 700; }
+    .warning { color: #b45309; font-weight: 700; }
+    .fail { color: #b91c1c; font-weight: 700; }
+    .meta { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>TCS 打滑控制自动分析报告</h1>
+  <div class="meta">
+    <p><strong>数据文件:</strong> sample_data\tcs_demo.csv</p>
+    <p><strong>工况摘要:</strong> 共识别 1 个事件: launch_slip</p>
+  </div>
+
+  <h2>KPI 总览</h2>
+  <table>
+    <thead>
+      <tr><th>KPI</th><th>数值</th><th>单位</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td>peak_slip_ratio</td>
+        <td>1.7727</td>
+        <td>ratio</td>
+        <td>全程最大驱动轮打滑率</td>
+      </tr>
+      
+      <tr>
+        <td>max_torque_cut_nm</td>
+        <td>112.0000</td>
+        <td>Nm</td>
+        <td>全程最大扭矩切减幅值</td>
+      </tr>
+      
+      <tr>
+        <td>max_rear_wheel_delta_kph</td>
+        <td>0.5000</td>
+        <td>kph</td>
+        <td>后轴左右轮速最大差值</td>
+      </tr>
+      
+      <tr>
+        <td>max_jerk_mps3</td>
+        <td>2.8000</td>
+        <td>m/s^3</td>
+        <td>全程最大纵向冲击度</td>
+      </tr>
+      
+      <tr>
+        <td>tcs_active_time_s</td>
+        <td>0.7500</td>
+        <td>s</td>
+        <td>TCS 激活总时长</td>
+      </tr>
+      
+      <tr>
+        <td>mean_vehicle_speed_kph</td>
+        <td>8.0160</td>
+        <td>kph</td>
+        <td>平均车速</td>
+      </tr>
+      
+    </tbody>
+  </table>
+
+  <h2>规则结果</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Rule ID</th><th>分类</th><th>标题</th><th>状态</th><th>测量值</th><th>阈值</th><th>场景</th><th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td>DQ-001</td>
+        <td>data_quality</td>
+        <td>关键字段缺失率</td>
+        <td class="pass">pass</td>
+        <td>0.0 ratio</td>
+        <td>0.02 ratio</td>
+        <td>-</td>
+        <td>关键字段完整性满足要求</td>
+      </tr>
+      
+      <tr>
+        <td>SCN-001</td>
+        <td>scenario_detection</td>
+        <td>TCS 工况识别覆盖</td>
+        <td class="pass">pass</td>
+        <td>1.0 count</td>
+        <td>1.0 count</td>
+        <td>-</td>
+        <td>已识别 1 个 TCS 事件</td>
+      </tr>
+      
+      <tr>
+        <td>PERF-001</td>
+        <td>performance</td>
+        <td>峰值打滑率</td>
+        <td class="fail">fail</td>
+        <td>1.7727272727272723 ratio</td>
+        <td>0.18 ratio</td>
+        <td>SCN-001</td>
+        <td>峰值打滑率超限</td>
+      </tr>
+      
+      <tr>
+        <td>PERF-002</td>
+        <td>performance</td>
+        <td>扭矩切减响应</td>
+        <td class="pass">pass</td>
+        <td>0.1 s</td>
+        <td>0.2 s</td>
+        <td>SCN-001</td>
+        <td>扭矩切减响应满足目标</td>
+      </tr>
+      
+      <tr>
+        <td>STB-001</td>
+        <td>stability_comfort</td>
+        <td>纵向冲击度</td>
+        <td class="pass">pass</td>
+        <td>2.8000000000000007 m/s^3</td>
+        <td>8.0 m/s^3</td>
+        <td>SCN-001</td>
+        <td>纵向冲击度正常</td>
+      </tr>
+      
+      <tr>
+        <td>STB-002</td>
+        <td>stability_comfort</td>
+        <td>控制频度</td>
+        <td class="pass">pass</td>
+        <td>1.0526315789473684 Hz</td>
+        <td>6.0 Hz</td>
+        <td>SCN-001</td>
+        <td>控制频度正常</td>
+      </tr>
+      
+    </tbody>
+  </table>
+</body>
+</html>

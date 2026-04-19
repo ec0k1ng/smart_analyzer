@@ -1,0 +1,352 @@
+{
+  "description": "兼容保留的旧接口映射文件。当前生效链路只使用 manual_column 作为 raw_inputs 的实际信号名，aliases 已不参与匹配。",
+  "signals": [
+    {
+      "standard_signal": "brake_pressure_fl_bar",
+      "manual_column": "",
+      "aliases": [
+        "brake_pressure_fl_bar",
+        "brkprs_fl",
+        "whl_cyl_press_fl",
+        "brk_fl_bar",
+        "BrkPrsFL",
+        "BrakePressure_FL",
+        "ESP_BrakePressFL",
+        "pBrk_FL",
+        "制动压力(1)",
+        "前左制动压力",
+        "左前制动压力"
+      ],
+      "required_by": [
+        "system_optional"
+      ]
+    },
+    {
+      "standard_signal": "brake_pressure_fr_bar",
+      "manual_column": "",
+      "aliases": [
+        "brake_pressure_fr_bar",
+        "brkprs_fr",
+        "whl_cyl_press_fr",
+        "brk_fr_bar",
+        "BrkPrsFR",
+        "BrakePressure_FR",
+        "ESP_BrakePresssFR",
+        "pBrk_FR",
+        "制动压力(2)",
+        "前右制动压力",
+        "右前制动压力"
+      ],
+      "required_by": [
+        "system_optional"
+      ]
+    },
+    {
+      "standard_signal": "longitudinal_accel_mps2",
+      "manual_column": "",
+      "aliases": [
+        "longitudinal_accel_mps2",
+        "long_acc",
+        "ax",
+        "longacc",
+        "accel_x",
+        "aLong",
+        "a_long",
+        "LongAccel",
+        "Ax_Vehicle",
+        "ESP_LongAccel",
+        "IMU_Ax",
+        "AccelLong",
+        "VehLongAccel",
+        "Accel_Longitudinal",
+        "longitudinal_acceleration",
+        "纵向加速度",
+        "纵向加速度g"
+      ],
+      "required_by": [
+        "KPI:max_jerk_mps3",
+        "STB-001",
+        "system_optional"
+      ]
+    },
+    {
+      "standard_signal": "tcs_active",
+      "manual_column": "",
+      "aliases": [
+        "tcs_active",
+        "tcs_flag",
+        "tcs_state",
+        "asr_active",
+        "traction_control_active",
+        "Switch1:1",
+        "TCS_Active",
+        "TCS_Flag",
+        "TCS_State",
+        "ASR_Active",
+        "ASR_Flag",
+        "ASR_State",
+        "ESP_TCSActive",
+        "ESP_ASRActive",
+        "TCS_Ctrl_Active",
+        "TractionCtrl",
+        "flgTCS",
+        "bTCSActive",
+        "TCS激活",
+        "驱动防滑激活"
+      ],
+      "required_by": [
+        "KPI:tcs_active_time_s",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "time_s",
+      "manual_column": "",
+      "aliases": [
+        "time_s",
+        "time",
+        "timestamp",
+        "t",
+        "time_sec",
+        "timestamps",
+        "Time",
+        "Time [s]",
+        "Time(s)",
+        "t [s]",
+        "t(s)",
+        "elapsed_time",
+        "zeit",
+        "Zeit [s]",
+        "时间"
+      ],
+      "required_by": [
+        "KPI:max_jerk_mps3",
+        "KPI:tcs_active_time_s",
+        "PERF-002",
+        "STB-001",
+        "STB-002",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "torque_actual_nm",
+      "manual_column": "",
+      "aliases": [
+        "torque_actual_nm",
+        "mottrq_act",
+        "trq_act",
+        "actual_torque",
+        "drv_trq_act",
+        "TrqAct",
+        "Trq_Act",
+        "MotTrq_Act",
+        "MotorTrq_Actual",
+        "TrqMotAct",
+        "MCU_TrqAct",
+        "MCU_ActTrq",
+        "EM_TorqueAct",
+        "TorqueFeedback",
+        "ActualTorque",
+        "实际扭矩(1)",
+        "实际扭矩1",
+        "电机实际扭矩",
+        "反馈扭矩"
+      ],
+      "required_by": [
+        "DQ-001",
+        "KPI:max_torque_cut_nm",
+        "PERF-002",
+        "STB-002",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "torque_request_nm",
+      "manual_column": "",
+      "aliases": [
+        "torque_request_nm",
+        "mottrq_req",
+        "trq_req",
+        "requested_torque",
+        "drv_trq_req",
+        "TqDmd",
+        "TrqReq",
+        "Trq_Req",
+        "MotTrq_Req",
+        "MotorTrq_Request",
+        "TrqMotReq",
+        "MCU_TrqReq",
+        "MCU_ReqTrq",
+        "EM_TorqueReq",
+        "TorqueDemand",
+        "RequestedTorque",
+        "DrvTrqDmd",
+        "目标扭矩(1)",
+        "目标扭矩1",
+        "电机需求扭矩",
+        "请求扭矩"
+      ],
+      "required_by": [
+        "DQ-001",
+        "KPI:max_torque_cut_nm",
+        "PERF-002",
+        "STB-002",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "vehicle_speed",
+      "manual_column": "",
+      "aliases": [
+        "vehicle_speed",
+        "veh_spd",
+        "vehspd",
+        "vehicle_speed_ref",
+        "reference_speed",
+        "VehSpd",
+        "Veh_Spd",
+        "VehicleSpd",
+        "VehSpeed",
+        "ESP_VehicleSpeed",
+        "ESP_VehSpd",
+        "ABS_VehSpd",
+        "VehV",
+        "vVeh",
+        "v_Veh",
+        "VehicleVelocity",
+        "RefSpeed",
+        "车速",
+        "车辆速度",
+        "整车车速",
+        "参考车速"
+      ],
+      "required_by": [
+        "DQ-001",
+        "KPI:mean_vehicle_speed_kph",
+        "KPI:peak_slip_ratio",
+        "PERF-001",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "wheel_speed_fl",
+      "manual_column": "",
+      "aliases": [
+        "wheel_speed_fl",
+        "whlspd_fl",
+        "whl_spd_fl",
+        "fl_wheel_speed",
+        "whlspdfl",
+        "WhlSpd_FL",
+        "WhlRPM_FL",
+        "WheelSpeed_FL",
+        "ESP_WhlSpd_FL",
+        "ABS_WhlSpd_FL",
+        "WhlVel_FL",
+        "nWhl_FL",
+        "vWhl_FL",
+        "FLWheelSpeed",
+        "WhlSpd_FL_Bremse1",
+        "轮速(1)",
+        "车轮速度1",
+        "左前轮速",
+        "前左轮速"
+      ],
+      "required_by": [
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "wheel_speed_fr",
+      "manual_column": "",
+      "aliases": [
+        "wheel_speed_fr",
+        "whlspd_fr",
+        "whl_spd_fr",
+        "fr_wheel_speed",
+        "whlspdfr",
+        "WhlSpd_FR",
+        "WhlRPM_FR",
+        "WheelSpeed_FR",
+        "ESP_WhlSpd_FR",
+        "ABS_WhlSpd_FR",
+        "WhlVel_FR",
+        "nWhl_FR",
+        "vWhl_FR",
+        "FRWheelSpeed",
+        "WhlSpd_FR_Bremse1",
+        "轮速(2)",
+        "车轮速度2",
+        "右前轮速",
+        "前右轮速"
+      ],
+      "required_by": [
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "wheel_speed_rl",
+      "manual_column": "",
+      "aliases": [
+        "wheel_speed_rl",
+        "whlspd_rl",
+        "whl_spd_rl",
+        "rl_wheel_speed",
+        "whlspdrl",
+        "WhlSpd_RL",
+        "WhlRPM_RL",
+        "WheelSpeed_RL",
+        "ESP_WhlSpd_RL",
+        "ABS_WhlSpd_RL",
+        "WhlVel_RL",
+        "nWhl_RL",
+        "vWhl_RL",
+        "RLWheelSpeed",
+        "WhlSpd_RL_Bremse1",
+        "轮速(3)",
+        "车轮速度3",
+        "左后轮速",
+        "后左轮速"
+      ],
+      "required_by": [
+        "DQ-001",
+        "KPI:max_rear_wheel_delta_kph",
+        "KPI:peak_slip_ratio",
+        "PERF-001",
+        "system_required"
+      ]
+    },
+    {
+      "standard_signal": "wheel_speed_rr",
+      "manual_column": "",
+      "aliases": [
+        "wheel_speed_rr",
+        "whlspd_rr",
+        "whl_spd_rr",
+        "rr_wheel_speed",
+        "whlspdrr",
+        "WhlSpd_RR",
+        "WhlRPM_RR",
+        "WheelSpeed_RR",
+        "ESP_WhlSpd_RR",
+        "ABS_WhlSpd_RR",
+        "WhlVel_RR",
+        "nWhl_RR",
+        "vWhl_RR",
+        "RRWheelSpeed",
+        "WhlSpd_RR_Bremse1",
+        "轮速(4)",
+        "车轮速度4",
+        "右后轮速",
+        "后右轮速"
+      ],
+      "required_by": [
+        "DQ-001",
+        "KPI:max_rear_wheel_delta_kph",
+        "KPI:peak_slip_ratio",
+        "PERF-001",
+        "system_required"
+      ]
+    }
+  ]
+}

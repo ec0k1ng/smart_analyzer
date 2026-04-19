@@ -1,0 +1,384 @@
+{
+  "source_path": "sample_data\\tcs_demo.csv",
+  "generated_at": "2026-04-11T22:25:23+08:00",
+  "analyzer_version": "0.1.0",
+  "analysis_profile": "default",
+  "config_path": null,
+  "settings_metadata": {},
+  "scenario_summary": "共识别 1 个事件: launch_slip",
+  "mapped_columns": {
+    "time_s": "time_s",
+    "wheel_speed_fl": "wheel_speed_fl",
+    "wheel_speed_fr": "wheel_speed_fr",
+    "wheel_speed_rl": "wheel_speed_rl",
+    "wheel_speed_rr": "wheel_speed_rr",
+    "vehicle_speed": "vehicle_speed",
+    "accel_pedal_pct": "accel_pedal_pct",
+    "torque_request_nm": "torque_request_nm",
+    "torque_actual_nm": "torque_actual_nm",
+    "brake_pressure_fl_bar": "brake_pressure_fl_bar",
+    "brake_pressure_fr_bar": "brake_pressure_fr_bar",
+    "longitudinal_accel_mps2": "longitudinal_accel_mps2",
+    "tcs_active": "tcs_active"
+  },
+  "rule_settings": {
+    "control_frequency_hz": {
+      "threshold": 6.0,
+      "source": "migrated_from_stb_002",
+      "enabled": true,
+      "unit": "Hz"
+    },
+    "data_quality_missing_rate": {
+      "threshold": 0.02,
+      "source": "migrated_from_dq_001",
+      "enabled": true,
+      "unit": "ratio"
+    },
+    "exceed_50_duration": {
+      "threshold": 0.0,
+      "source": "reference_only",
+      "enabled": true,
+      "unit": "秒"
+    },
+    "max_jerk_mps3": {
+      "threshold": 8.0,
+      "source": "migrated_from_stb_001",
+      "enabled": true,
+      "unit": "m/s^3"
+    },
+    "max_rear_wheel_delta_kph": {
+      "threshold": 0.0,
+      "source": "reference_only",
+      "enabled": true,
+      "unit": "kph"
+    },
+    "max_torque_cut_nm": {
+      "threshold": 0.0,
+      "source": "reference_only",
+      "enabled": true,
+      "unit": "Nm"
+    },
+    "mean_vehicle_speed_kph": {
+      "threshold": 0.0,
+      "source": "reference_only",
+      "enabled": true,
+      "unit": "kph"
+    },
+    "peak_slip_ratio": {
+      "threshold": 0.18,
+      "source": "migrated_from_perf_001",
+      "enabled": true,
+      "unit": "ratio"
+    },
+    "tcs_active_time_s": {
+      "threshold": 0.0,
+      "source": "reference_only",
+      "enabled": true,
+      "unit": "s"
+    },
+    "tcs_scenario_count": {
+      "threshold": 1.0,
+      "source": "migrated_from_scn_001",
+      "enabled": true,
+      "unit": "count"
+    },
+    "torque_response_time_s": {
+      "threshold": 0.2,
+      "source": "migrated_from_perf_002",
+      "enabled": true,
+      "unit": "s"
+    },
+    "DQ-001": {
+      "threshold": 0.02,
+      "unit": "ratio",
+      "source": "fixed"
+    },
+    "SCN-001": {
+      "threshold": 1.0,
+      "unit": "count",
+      "source": "fixed"
+    },
+    "PERF-001": {
+      "threshold": 0.18,
+      "unit": "ratio",
+      "source": "fixed"
+    },
+    "PERF-002": {
+      "threshold": 0.2,
+      "unit": "s",
+      "source": "fixed"
+    },
+    "STB-001": {
+      "threshold": 8.0,
+      "unit": "m/s^3",
+      "source": "historical_recommendation"
+    },
+    "STB-002": {
+      "threshold": 6.0,
+      "unit": "Hz",
+      "source": "historical_recommendation"
+    }
+  },
+  "data_overview": {
+    "row_count": 25,
+    "time_start_s": 0.0,
+    "time_end_s": 1.2
+  },
+  "kpis": [
+    {
+      "name": "control_frequency_hz",
+      "value": 0.8,
+      "unit": "Hz",
+      "description": "基于扭矩切减信号估算控制动作频度。"
+    },
+    {
+      "name": "data_quality_missing_rate",
+      "value": 0.0,
+      "unit": "ratio",
+      "description": "关键分析输入信号中的最大缺失率。"
+    },
+    {
+      "name": "exceed_50_duration",
+      "value": 0.0,
+      "unit": "秒",
+      "description": "计算轮速超过50 km/h的总持续时间"
+    },
+    {
+      "name": "max_jerk_mps3",
+      "value": 2.8000000000000007,
+      "unit": "m/s^3",
+      "description": "全程最大纵向冲击度"
+    },
+    {
+      "name": "max_rear_wheel_delta_kph",
+      "value": 0.5,
+      "unit": "kph",
+      "description": "后轴左右轮速最大差值"
+    },
+    {
+      "name": "max_torque_cut_nm",
+      "value": 112.0,
+      "unit": "Nm",
+      "description": "全程最大扭矩切减幅值"
+    },
+    {
+      "name": "mean_vehicle_speed_kph",
+      "value": 8.015999999999998,
+      "unit": "kph",
+      "description": "平均车速"
+    },
+    {
+      "name": "peak_slip_ratio",
+      "value": 1.7727272727272723,
+      "unit": "ratio",
+      "description": "全程最大驱动轮打滑率"
+    },
+    {
+      "name": "tcs_active_time_s",
+      "value": 0.75,
+      "unit": "s",
+      "description": "TCS 激活总时长"
+    },
+    {
+      "name": "tcs_scenario_count",
+      "value": 1.0,
+      "unit": "count",
+      "description": "本次分析识别到的 TCS 工况窗口数量。"
+    },
+    {
+      "name": "torque_response_time_s",
+      "value": 0.2,
+      "unit": "s",
+      "description": "从当前分析开始到检测到有效扭矩切减的首个响应时间。"
+    }
+  ],
+  "scenarios": [
+    {
+      "scenario_id": "SCN-001",
+      "scenario_type": "launch_slip",
+      "start_time": 0.1,
+      "end_time": 1.0,
+      "duration_s": 0.9,
+      "peak_slip_ratio": 1.7727272727272723,
+      "trigger_reason": "slip_detected_without_tcs"
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "control_frequency_hz",
+      "category": "kpi_assessment",
+      "title": "控制频度",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.8,
+      "threshold_value": 6.0,
+      "unit": "Hz",
+      "message": "控制频度正常",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_stb_002",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "data_quality_missing_rate",
+      "category": "kpi_assessment",
+      "title": "关键字段缺失率",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.0,
+      "threshold_value": 0.02,
+      "unit": "ratio",
+      "message": "关键字段完整性满足要求",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_dq_001",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "exceed_50_duration",
+      "category": "kpi_assessment",
+      "title": "轮速超过5",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.0,
+      "threshold_value": 0.0,
+      "unit": "秒",
+      "message": "观测指标，仅供参考",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "reference_only",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "max_jerk_mps3",
+      "category": "kpi_assessment",
+      "title": "最大纵向冲击度",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 2.8000000000000007,
+      "threshold_value": 8.0,
+      "unit": "m/s^3",
+      "message": "纵向冲击度正常",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_stb_001",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "max_rear_wheel_delta_kph",
+      "category": "kpi_assessment",
+      "title": "后轴轮速差峰值",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.5,
+      "threshold_value": 0.0,
+      "unit": "kph",
+      "message": "观测指标，仅供参考",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "reference_only",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "max_torque_cut_nm",
+      "category": "kpi_assessment",
+      "title": "最大扭矩切减",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 112.0,
+      "threshold_value": 0.0,
+      "unit": "Nm",
+      "message": "观测指标，仅供参考",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "reference_only",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "mean_vehicle_speed_kph",
+      "category": "kpi_assessment",
+      "title": "平均车速",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 8.015999999999998,
+      "threshold_value": 0.0,
+      "unit": "kph",
+      "message": "背景指标，仅供参考",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "reference_only",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "peak_slip_ratio",
+      "category": "kpi_assessment",
+      "title": "峰值打滑率",
+      "status": "fail",
+      "severity": "high",
+      "measured_value": 1.7727272727272723,
+      "threshold_value": 0.18,
+      "unit": "ratio",
+      "message": "峰值打滑率超限",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_perf_001",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "tcs_active_time_s",
+      "category": "kpi_assessment",
+      "title": "TCS 激活总时长",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.75,
+      "threshold_value": 0.0,
+      "unit": "s",
+      "message": "观测指标，仅供参考",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "reference_only",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "tcs_scenario_count",
+      "category": "kpi_assessment",
+      "title": "TCS 工况识别数",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 1.0,
+      "threshold_value": 1.0,
+      "unit": "count",
+      "message": "已识别到有效 TCS 工况",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_scn_001",
+      "confidence": 1.0
+    },
+    {
+      "rule_id": "torque_response_time_s",
+      "category": "kpi_assessment",
+      "title": "扭矩切减响应时间",
+      "status": "pass",
+      "severity": "info",
+      "measured_value": 0.2,
+      "threshold_value": 0.2,
+      "unit": "s",
+      "message": "扭矩切减响应满足目标",
+      "scenario_id": null,
+      "start_time": null,
+      "end_time": null,
+      "threshold_source": "migrated_from_perf_002",
+      "confidence": 1.0
+    }
+  ]
+}

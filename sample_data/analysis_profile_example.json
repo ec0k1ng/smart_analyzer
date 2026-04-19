@@ -1,0 +1,17 @@
+{
+  "profile_name": "demo_low_mu_profile",
+  "metadata": {
+    "vehicle_program": "demo_vehicle",
+    "road_surface": "low_mu"
+  },
+  "rules": {
+    "PERF-001": {
+      "threshold": 0.15,
+      "source": "vehicle_demo_calibration_v1"
+    },
+    "STB-002": {
+      "enabled": false,
+      "source": "disabled_for_demo_review"
+    }
+  }
+}

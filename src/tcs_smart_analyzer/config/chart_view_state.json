@@ -1,0 +1,28 @@
+{
+  "active_sheet": 0,
+  "sheets": [
+    {
+      "name": "工作表 1",
+      "panels": [
+        {
+          "signals": [
+            "vehicle_speed",
+            "wheel_speed_fl"
+          ]
+        },
+        {
+          "signals": [
+            "tcs_active_fl"
+          ]
+        },
+        {
+          "signals": [
+            "tcs_active_rr",
+            "tcs_active_rl",
+            "tcs_active_fr"
+          ]
+        }
+      ]
+    }
+  ]
+}

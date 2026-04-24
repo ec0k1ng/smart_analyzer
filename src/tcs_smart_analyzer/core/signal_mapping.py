@@ -15,6 +15,7 @@ class SignalMappingError(ValueError):
 
 def _clean_column_name(name: str) -> str:
     cleaned = str(name).strip()
+    cleaned = re.sub(r"\s*[\\/]\s*[A-Za-z][\w .-]*:\s*[-+]?\d+\s*$", "", cleaned)
     cleaned = re.sub(r"\s*\[.*?\]", "", cleaned)
     cleaned = re.sub(r"\s*\((?:s|ms|kph|km/h|m/s|m/s2|m/s²|rad/s|rpm|nm|bar|°|deg|%|g)\)\s*$", "", cleaned, flags=re.IGNORECASE)
     if "::" in cleaned:
@@ -23,9 +24,25 @@ def _clean_column_name(name: str) -> str:
         last_part = cleaned.rsplit(".", 1)[-1]
         if last_part and not last_part[0].isdigit():
             cleaned = last_part
-    if "\\" in cleaned:
-        cleaned = cleaned.rsplit("\\", 1)[-1]
     return cleaned.strip()
+
+
+def resolve_requested_signal_names(required_signals: Iterable[str] | None = None) -> list[str]:
+    interface_mapping = load_interface_mapping()
+    candidate_names: list[str] = []
+    for raw_name in required_signals or list_required_raw_input_signals():
+        standard_name = str(raw_name).strip()
+        if not standard_name:
+            continue
+        entry = interface_mapping.get(standard_name, {})
+        actual_names = list(entry.get("actual_names", []))
+        manual_column = entry.get("manual_column", "")
+        aliases = list(entry.get("aliases", []))
+        for candidate in [manual_column, *actual_names, standard_name, *aliases]:
+            cleaned_candidate = _clean_column_name(str(candidate).strip())
+            if cleaned_candidate and cleaned_candidate not in candidate_names:
+                candidate_names.append(cleaned_candidate)
+    return candidate_names
 
 
 def _levenshtein_distance(s1: str, s2: str) -> int:

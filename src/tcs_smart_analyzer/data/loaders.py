@@ -4,6 +4,7 @@ import csv
 import io
 import re
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +22,14 @@ class UnsupportedFileTypeError(ValueError):
     pass
 
 
-def load_timeseries_file(file_path: str | Path) -> pd.DataFrame:
+def _clean_column_name(name: object) -> str:
+    cleaned = str(name).strip().strip('"').strip("'")
+    cleaned = re.sub(r"\s*[\\/]\s*[A-Za-z][\w .-]*:\s*[-+]?\d+\s*$", "", cleaned)
+    cleaned = re.sub(r"\s+\[(?:XCP|CCP|CAN|LIN|ETH|FLEXRAY)[^\]]*\]\s*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip() or str(name).strip()
+
+
+def load_timeseries_file(file_path: str | Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     path = Path(file_path)
     suffix = path.suffix.lower()
     if path.name.startswith("~$"):
@@ -40,13 +48,13 @@ def load_timeseries_file(file_path: str | Path) -> pd.DataFrame:
     elif suffix == ".mat":
         dataframe = _load_mat_file(path)
     elif suffix == ".blf":
-        dataframe = _load_blf_file(path)
+        dataframe = _load_blf_file(path, required_signals=required_signals)
     elif suffix == ".asc":
-        dataframe = _load_asc_file(path)
+        dataframe = _load_asc_file(path, required_signals=required_signals)
     else:
         dataframe = _load_mdf_file(path)
 
-    dataframe.columns = [str(column).strip() for column in dataframe.columns]
+    dataframe.columns = [_clean_column_name(column) for column in dataframe.columns]
     return _normalize_time_axis_column(dataframe)
 
 
@@ -532,7 +540,12 @@ def _load_mdf_file(path: Path) -> pd.DataFrame:
     return _normalize_time_axis_column(dataframe)
 
 
-def _load_blf_file(path: Path) -> pd.DataFrame:
+def _normalize_requested_signal_names(required_signals: Iterable[str] | None) -> set[str] | None:
+    normalized = {str(signal_name).strip() for signal_name in (required_signals or []) if str(signal_name).strip()}
+    return normalized or None
+
+
+def _load_blf_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     try:
         import can
         import cantools
@@ -546,6 +559,7 @@ def _load_blf_file(path: Path) -> pd.DataFrame:
         detail = f" 已发现 DBC，但均未能成功加载：{'；'.join(dbc_errors[:3])}" if dbc_errors else ""
         raise UnsupportedFileTypeError(f"读取 BLF 总线数据需要可用的 DBC 文件。{detail}")
 
+    decoder_lookup = _build_can_message_lookup(databases, required_signals)
     signal_timeseries: dict[str, tuple[list[float], list[float]]] = {}
     start_time: float | None = None
     decoded_count = 0
@@ -554,7 +568,7 @@ def _load_blf_file(path: Path) -> pd.DataFrame:
         for message in reader:
             if getattr(message, "is_error_frame", False) or getattr(message, "is_remote_frame", False):
                 continue
-            decoded = _decode_can_message(message.arbitration_id, bytes(message.data), databases)
+            decoded = _decode_can_message(message.arbitration_id, bytes(message.data), decoder_lookup)
             if not decoded:
                 undecoded_count += 1
                 continue
@@ -571,7 +585,7 @@ def _load_blf_file(path: Path) -> pd.DataFrame:
     return _build_bus_frame_from_timeseries(signal_timeseries, "BLF", decoded_count, undecoded_count)
 
 
-def _load_asc_file(path: Path) -> pd.DataFrame:
+def _load_asc_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     try:
         import cantools
     except ImportError as exc:
@@ -584,6 +598,7 @@ def _load_asc_file(path: Path) -> pd.DataFrame:
         detail = f" 已发现 DBC，但均未能成功加载：{'；'.join(dbc_errors[:3])}" if dbc_errors else ""
         raise UnsupportedFileTypeError(f"读取 ASC 总线数据需要可用的 DBC 文件。{detail}")
 
+    decoder_lookup = _build_can_message_lookup(databases, required_signals)
     raw_bytes = path.read_bytes()
     try:
         text = _decode_text_bytes(raw_bytes)
@@ -619,7 +634,7 @@ def _load_asc_file(path: Path) -> pd.DataFrame:
         except (ValueError, IndexError):
             continue
 
-        decoded = _decode_can_message(arb_id, payload, databases)
+        decoded = _decode_can_message(arb_id, payload, decoder_lookup)
         if not decoded:
             undecoded_count += 1
             continue
@@ -705,19 +720,50 @@ def _load_can_databases(log_path: Path, cantools_module) -> tuple[list[object], 
     return databases, dbc_paths, errors
 
 
-def _decode_can_message(arbitration_id: int, payload: bytes, databases: list[object]) -> dict[str, object]:
-    normalized_ids = [arbitration_id, arbitration_id & 0x1FFFFFFF, arbitration_id & 0x7FF]
+def _build_can_message_lookup(databases: list[object], required_signals: Iterable[str] | None = None) -> dict[int, list[tuple[object, tuple[str, ...]]]]:
+    requested_names = _normalize_requested_signal_names(required_signals)
+    lookup: dict[int, list[tuple[object, tuple[str, ...]]]] = {}
     for database in databases:
-        for candidate_id in normalized_ids:
-            try:
-                message = database.get_message_by_frame_id(candidate_id)
-            except KeyError:
+        for message in getattr(database, "messages", []):
+            signal_names = tuple(
+                str(signal.name).strip()
+                for signal in getattr(message, "signals", [])
+                if str(getattr(signal, "name", "")).strip()
+            )
+            if requested_names is None:
+                relevant_signal_names = signal_names
+            else:
+                relevant_signal_names = tuple(signal_name for signal_name in signal_names if signal_name in requested_names)
+                if not relevant_signal_names:
+                    continue
+            frame_id = int(getattr(message, "frame_id", 0))
+            for candidate_id in {frame_id, frame_id & 0x1FFFFFFF, frame_id & 0x7FF}:
+                lookup.setdefault(candidate_id, []).append((message, relevant_signal_names))
+    return lookup
+
+
+def _decode_can_message(
+    arbitration_id: int,
+    payload: bytes,
+    decoder_lookup: dict[int, list[tuple[object, tuple[str, ...]]]],
+) -> dict[str, object]:
+    seen_messages: set[int] = set()
+    for candidate_id in [arbitration_id, arbitration_id & 0x1FFFFFFF, arbitration_id & 0x7FF]:
+        for message, relevant_signal_names in decoder_lookup.get(candidate_id, []):
+            message_identity = id(message)
+            if message_identity in seen_messages:
                 continue
+            seen_messages.add(message_identity)
             try:
                 decoded = message.decode(payload, decode_choices=False)
             except Exception:
                 continue
-            return {str(key): value for key, value in decoded.items()}
+            if relevant_signal_names:
+                filtered = {signal_name: decoded[signal_name] for signal_name in relevant_signal_names if signal_name in decoded}
+            else:
+                filtered = {str(key): value for key, value in decoded.items()}
+            if filtered:
+                return filtered
     return {}
 
 
@@ -746,24 +792,18 @@ def _build_bus_frame_from_timeseries(
     for signal_name, (times, values) in signal_timeseries.items():
         if not times:
             continue
+        time_index = pd.Index(unified_time, dtype=float)
         signal_series = pd.Series(
             data=[float(v) if isinstance(v, (int, float)) else np.nan for v in values],
             index=pd.Index(times, dtype=float),
         )
         signal_series = signal_series.groupby(signal_series.index).last()
-        reindexed = signal_series.reindex(pd.Index(unified_time, dtype=float))
-
-        time_diff = pd.Series(unified_time).diff()
-        cumulative_gap = pd.Series(0.0, index=range(len(unified_time)))
-        for i in range(len(unified_time)):
-            if reindexed.iloc[i] if i < len(reindexed) else True:
-                if pd.isna(reindexed.iloc[i]):
-                    cumulative_gap.iloc[i] = cumulative_gap.iloc[i - 1] + (time_diff.iloc[i] if i > 0 else 0.0)
-                else:
-                    cumulative_gap.iloc[i] = 0.0
-
+        reindexed = signal_series.reindex(time_index)
+        time_diff = pd.Series(unified_time, index=time_index, dtype=float).diff().fillna(0.0)
+        cumulative_gap = time_diff.where(reindexed.isna(), 0.0).groupby(reindexed.notna().cumsum()).cumsum()
         filled = reindexed.ffill()
-        filled[cumulative_gap > max_fill_gap] = np.nan
+        mask = (cumulative_gap > max_fill_gap).reindex(filled.index, fill_value=False)
+        filled[mask] = np.nan
         result[signal_name] = filled.values
 
     return result.sort_values("time_s").reset_index(drop=True)

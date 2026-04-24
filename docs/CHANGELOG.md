@@ -1,5 +1,28 @@
 # 变更记录
 
+## 2026-04-24
+
+### 数据加载与总线解码修复
+
+- DAT/表格类列名加载出口新增协议尾缀清理，支持去除类似 \XCP: 1 这类后缀，减少接口映射命中失败。
+- BLF 时序拼帧修复 forward fill gap 的索引对齐问题，消除大文件场景下的 pandas 布尔索引不对齐错误。
+- BLF/ASC 解码链路改为按当前分析真正需要的实际信号名做预筛选，避免盲目解出全部 DBC 信号。
+- 补充 tests/test_loaders.py 回归覆盖，新增 DAT 协议尾缀、BLF gap 对齐和按需解码探针。
+
+### 结果生命周期、曲线页与启动稳定性修复
+
+- 新一轮分析开始时会清空上一轮结果但保留队列，避免二次分析继续展示旧结果。
+- 曲线缓存改为按结果实例隔离，避免同一路径文件重分析后复用旧帧。
+- 曲线页新增共享光标覆盖层，并把图表布局收尾延后到事件循环下一拍。
+- 切到主标签“曲线”时会主动触发图表刷新，以缓解分析在隐藏页完成后首次显示不完整的问题。
+- GUI 启动时增加 QApplication 级主窗口强引用，并显式 showNormal/raise_/activateWindow 提升窗口激活稳定性。
+
+### 文档与验证同步
+
+- README、PROJECT_STATUS、VALIDATION、HANDOFF、ENTRYPOINTS、IMPLEMENTATION_LOGIC、TODO、DECISIONS 已同步到当前代码事实。
+- 本轮重新执行 pytest tests/test_loaders.py tests/test_engine_pipeline.py，18 项通过。
+- 本轮重新执行 scripts/gui_smoke_check.py，13 项探针通过，包含 chart_plot_area_full_enough。
+
 ## 2026-04-17
 
 ### V1.2 安装程序同步升级

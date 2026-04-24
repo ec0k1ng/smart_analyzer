@@ -7,7 +7,37 @@ from unittest.mock import Mock, call, patch
 
 import pandas as pd
 
-from tcs_smart_analyzer.data.loaders import SUPPORTED_FILE_TYPES, UnsupportedFileTypeError, _load_can_databases, load_timeseries_file
+from tcs_smart_analyzer.data.loaders import (
+    SUPPORTED_FILE_TYPES,
+    UnsupportedFileTypeError,
+    _build_bus_frame_from_timeseries,
+    _build_can_message_lookup,
+    _decode_can_message,
+    _load_can_databases,
+    load_timeseries_file,
+)
+
+
+class _FakeSignal:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _FakeMessage:
+    def __init__(self, frame_id: int, signal_names: list[str], decoded: dict[str, object]) -> None:
+        self.frame_id = frame_id
+        self.signals = [_FakeSignal(name) for name in signal_names]
+        self._decoded = decoded
+        self.decode_calls = 0
+
+    def decode(self, payload: bytes, decode_choices: bool = False) -> dict[str, object]:  # noqa: ARG002
+        self.decode_calls += 1
+        return dict(self._decoded)
+
+
+class _FakeDatabase:
+    def __init__(self, messages: list[_FakeMessage]) -> None:
+        self.messages = messages
 
 
 class LoaderTests(unittest.TestCase):
@@ -24,6 +54,21 @@ class LoaderTests(unittest.TestCase):
 
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
             self.assertEqual(len(dataframe), 2)
+
+    def test_dat_protocol_suffix_is_removed_from_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.dat"
+            path.write_text(
+                "time_s\tETCS_VSE_s_SpdWhlCorrFrLe_kmph\\XCP: 1\twheel_speed_fr\\CCP: 2\n0.0\t10\t11\n0.1\t12\t13\n",
+                encoding="utf-8",
+            )
+
+            dataframe = load_timeseries_file(path)
+
+            self.assertEqual(
+                list(dataframe.columns),
+                ["time_s", "ETCS_VSE_s_SpdWhlCorrFrLe_kmph", "wheel_speed_fr"],
+            )
 
     def test_wps_style_csv_with_gb18030_and_semicolon_can_be_loaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -119,6 +164,36 @@ class LoaderTests(unittest.TestCase):
             self.assertIn(dbc_path, dbc_paths)
             self.assertEqual(errors, [])
             self.assertIn(call(str(dbc_path), strict=False), cantools_mock.database.load_file.call_args_list)
+
+    def test_build_bus_frame_from_timeseries_aligns_gap_mask_with_float_index(self) -> None:
+        dataframe = _build_bus_frame_from_timeseries(
+            {
+                "wheel_speed_fl": ([0.0, 0.5], [10.0, 12.0]),
+                "vehicle_speed": ([0.1, 0.2, 0.3, 0.4, 0.5], [1.0, 1.0, 1.0, 1.0, 1.0]),
+            },
+            "BLF",
+        )
+
+        series = dataframe.set_index("time_s")["wheel_speed_fl"]
+        self.assertEqual(float(series.loc[0.1]), 10.0)
+        self.assertTrue(pd.isna(series.loc[0.3]))
+        self.assertTrue(pd.isna(series.loc[0.4]))
+        self.assertEqual(float(series.loc[0.5]), 12.0)
+
+    def test_can_decoder_lookup_only_keeps_requested_signals(self) -> None:
+        target_message = _FakeMessage(
+            0x123,
+            ["wheel_speed_fl", "wheel_speed_fr"],
+            {"wheel_speed_fl": 10.0, "wheel_speed_fr": 11.0},
+        )
+        skipped_message = _FakeMessage(0x456, ["engine_speed"], {"engine_speed": 1234.0})
+        lookup = _build_can_message_lookup([_FakeDatabase([target_message, skipped_message])], {"wheel_speed_fl"})
+
+        decoded = _decode_can_message(0x123, b"\x00" * 8, lookup)
+
+        self.assertEqual(decoded, {"wheel_speed_fl": 10.0})
+        self.assertEqual(target_message.decode_calls, 1)
+        self.assertEqual(skipped_message.decode_calls, 0)
 
 
 if __name__ == "__main__":

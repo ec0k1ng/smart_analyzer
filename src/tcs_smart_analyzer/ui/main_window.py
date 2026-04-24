@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - fallback when optional dependency is m
     lazy_pinyin = None
 
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PySide6.QtCore import QMargins, QMimeData, QPoint, QPointF, QRect, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QMargins, QMimeData, QPoint, QPointF, QRect, QRectF, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QDrag, QKeySequence, QMouseEvent, QPainter, QPen, QShortcut, QTextCharFormat, QTextCursor, QTextDocument, QTextFormat, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -1441,22 +1441,6 @@ class InteractiveChartView(QChartView):
 
     def paintEvent(self, event) -> None:  # noqa: ANN001
         super().paintEvent(event)
-        axis_x, axis_y = self._get_axes()
-        chart = self.chart()
-        if chart is None or axis_x is None or axis_y is None or self.cursor_mode == 0:
-            return
-        painter = QPainter(self.viewport())
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        plot_area = chart.plotArea()
-        pen_colors = [QColor("#0f766e"), QColor("#9333ea")]
-        for cursor_index in range(self.cursor_mode):
-            cursor_x = self.cursor_positions[cursor_index]
-            if cursor_x is None:
-                continue
-            point = chart.mapToPosition(QPointF(float(cursor_x), axis_y.min()))
-            painter.setPen(QPen(pen_colors[cursor_index % len(pen_colors)], 1.6, Qt.PenStyle.SolidLine))
-            painter.drawLine(QPointF(point.x(), plot_area.top()), QPointF(point.x(), plot_area.bottom()))
-        painter.end()
 
     def _scale_axis(self, axis: QValueAxis, factor: float) -> None:
         lower = axis.min()
@@ -1589,6 +1573,36 @@ class ChartPanelFrame(QFrame):
         QTimer.singleShot(0, self._apply_target_signal_table_width)
 
 
+class SharedCursorOverlay(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._cursor_lines: list[tuple[float, float, float, QColor]] = []
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setStyleSheet("background: transparent;")
+        self.hide()
+
+    def set_cursor_lines(self, cursor_lines: list[tuple[float, float, float, QColor]]) -> None:
+        self._cursor_lines = [
+            (float(x), float(top), float(bottom), QColor(color))
+            for x, top, bottom, color in cursor_lines
+            if float(bottom) > float(top)
+        ]
+        self.setVisible(bool(self._cursor_lines))
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001
+        super().paintEvent(event)
+        if not self._cursor_lines:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for x, top, bottom, color in self._cursor_lines:
+            painter.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine))
+            painter.drawLine(QPointF(x, top), QPointF(x, bottom))
+        painter.end()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -1635,6 +1649,7 @@ class MainWindow(QMainWindow):
         self._kpi_editor_dirty = False
         self._signal_color_map: dict[str, QColor] = {}
         self._shared_chart_x_range: tuple[float, float] | None = None
+        self._shared_cursor_colors = [QColor("#0f766e"), QColor("#9333ea")]
         self._chart_frame_cache: dict[str, object] = {}
         self._chart_sample_cache: dict[str, object] = {}
         self._loading_kpi_group = False
@@ -1647,7 +1662,7 @@ class MainWindow(QMainWindow):
         self._mapping_persist_timer.setSingleShot(True)
         self._mapping_persist_timer.timeout.connect(self._persist_mapping_editor_state)
 
-        self.setWindowTitle("自动化数据分析工具 V1.2")
+        self.setWindowTitle("自动化数据分析工具")
         self.resize(1720, 1060)
         self.setStyleSheet(APP_STYLE)
         self._build_ui()
@@ -1665,6 +1680,9 @@ class MainWindow(QMainWindow):
 
     def _make_result_key(self, path: str, group_key: str) -> str:
         return f"{group_key}::{path}"
+
+    def _result_cache_key(self, result: AnalysisResult) -> str:
+        return f"{result.context.source_path}::{id(result)}"
 
     def _result_output_stem(self, result: AnalysisResult) -> str:
         stem = result.context.source_path.stem
@@ -1685,7 +1703,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_results_tab(), "结果")
         self.tabs.addTab(self._build_charts_tab(), "曲线")
         self.tabs.addTab(self._build_config_workbench_tab(), "配置工作台")
-        self.tabs.currentChanged.connect(self._clear_editor_transient_highlights)
+        self.tabs.currentChanged.connect(self._on_main_tab_changed)
 
         layout.addWidget(self.tabs, 1)
         self.setCentralWidget(root)
@@ -2004,14 +2022,22 @@ class MainWindow(QMainWindow):
         self.chart_status_label = QLabel("光标未启用")
         self.chart_status_label.setStyleSheet("color: #73879a; padding: 0; font-weight: 600; min-height: 12px; font-size: 10px;")
 
+        self.chart_overlay_host = QWidget()
+        chart_overlay_layout = QVBoxLayout(self.chart_overlay_host)
+        chart_overlay_layout.setContentsMargins(0, 0, 0, 0)
+        chart_overlay_layout.setSpacing(0)
         self.chart_splitter = QSplitter(Qt.Orientation.Vertical)
         self.chart_splitter.setChildrenCollapsible(False)
         self.chart_splitter.setHandleWidth(1)
         self.chart_splitter.setStyleSheet("QSplitter::handle { background: #d5e2ef; }")
+        chart_overlay_layout.addWidget(self.chart_splitter, 1)
+        self.chart_cursor_overlay = SharedCursorOverlay(self.chart_overlay_host)
+        self.chart_overlay_host.installEventFilter(self)
+        self.chart_splitter.installEventFilter(self)
         layout.addWidget(tools_group)
         layout.addLayout(sheets_row)
         layout.addWidget(self.chart_status_label)
-        layout.addWidget(self.chart_splitter, 1)
+        layout.addWidget(self.chart_overlay_host, 1)
         return tab
 
     def _build_config_workbench_tab(self) -> QWidget:
@@ -2243,6 +2269,11 @@ class MainWindow(QMainWindow):
         ]:
             if isinstance(editor, JumpAwarePlainTextEdit):
                 editor.clear_transient_highlights()
+
+    def _on_main_tab_changed(self, index: int) -> None:
+        self._clear_editor_transient_highlights()
+        if index == 2:
+            QTimer.singleShot(0, self.refresh_chart_panels)
 
     def _on_application_focus_changed(self, old: QWidget | None, new: QWidget | None) -> None:
         old_owner = self._editor_owner_for_widget(old)
@@ -2478,15 +2509,16 @@ class MainWindow(QMainWindow):
     def _has_existing_analysis_session(self) -> bool:
         return bool(self.results_by_key or self.result_order or self.selected_chart_path)
 
-    def _reset_analysis_session(self, log_message: bool = True) -> None:
-        self.queue_entries.clear()
+    def _clear_analysis_results(self, keep_queue: bool = True) -> None:
+        if not keep_queue:
+            self.queue_entries.clear()
+            self.file_list.clear()
         self.results_by_key.clear()
         self.result_order.clear()
         self.selected_chart_path = None
         self._shared_chart_x_range = None
         self._chart_frame_cache.clear()
         self._chart_sample_cache.clear()
-        self.file_list.clear()
         self.rule_table.clearSpans()
         self.rule_table.setRowCount(0)
         self._refresh_result_scope_combo()
@@ -2494,6 +2526,9 @@ class MainWindow(QMainWindow):
         self.analysis_progress_bar.setValue(0)
         self.analysis_progress_bar.setFormat("等待分析")
         self.refresh_result_views()
+
+    def _reset_analysis_session(self, log_message: bool = True) -> None:
+        self._clear_analysis_results(keep_queue=False)
         if log_message:
             self.log("warning", "已开始新的分析批次，上一批次的队列与结果已清空。")
 
@@ -2747,6 +2782,7 @@ class MainWindow(QMainWindow):
     def _analyze_paths(self, entries: list[dict[str, str]]) -> None:
         self.clear_runtime_log()
         self.reload_runtime_configs(log_message=False)
+        self._clear_analysis_results(keep_queue=True)
         output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir = output_dir
@@ -2766,9 +2802,6 @@ class MainWindow(QMainWindow):
                 group_key = str(entry.get("group_key", "__all_kpis__"))
                 group_name = self._group_name(group_key)
                 result_key = self._make_result_key(str(path), group_key)
-                cache_key = str(path)
-                self._chart_frame_cache.pop(cache_key, None)
-                self._chart_sample_cache.pop(cache_key, None)
                 self.analysis_progress_bar.setFormat(f"分析中 {path.name} %v/%m")
                 QApplication.processEvents()
                 result = self.engine.analyze_file(path, kpi_group_key=group_key)
@@ -2832,7 +2865,7 @@ class MainWindow(QMainWindow):
             if result is None:
                 continue
             frame = self._prepare_chart_frame(result)
-            self._chart_sample_cache[path] = self._downsample_frame(frame)
+            self._sampled_chart_frame(result, frame)
 
     def _get_queue_order_paths(self) -> list[str]:
         return [entry["path"] for entry in self.queue_entries]
@@ -3131,7 +3164,7 @@ class MainWindow(QMainWindow):
         return frame.iloc[::step].copy()
 
     def _sampled_chart_frame(self, result: AnalysisResult, frame):  # noqa: ANN001
-        cache_key = str(result.context.source_path)
+        cache_key = self._result_cache_key(result)
         cached = self._chart_sample_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -3177,6 +3210,7 @@ class MainWindow(QMainWindow):
         for panel in self.chart_panels:
             frame: ChartPanelFrame = panel["frame"]
             frame.view.set_x_range(x_range, bounds)
+        self._refresh_chart_cursor_overlay()
 
     def _apply_shared_x_range(self) -> None:
         if self._shared_chart_x_range is None:
@@ -3188,6 +3222,7 @@ class MainWindow(QMainWindow):
         for panel in self.chart_panels:
             frame: ChartPanelFrame = panel["frame"]
             frame.view.set_x_range(self._shared_chart_x_range, bounds)
+        self._refresh_chart_cursor_overlay()
 
     def _build_signal_chart(self, frame, signal_names: list[str], colors: list[QColor], show_x_axis: bool) -> tuple[QChart, tuple[float, float] | None, tuple[float, float] | None]:
         chart = QChart()
@@ -3342,6 +3377,8 @@ class MainWindow(QMainWindow):
                 frame.set_signal_table_width(width)
         finally:
             self._signal_table_width_sync_in_progress = False
+        QTimer.singleShot(0, self._align_chart_plot_areas)
+        QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
 
     def _auto_adjust_signal_table_width(self) -> None:
         if not self.chart_panels or self._signal_table_width_sync_in_progress:
@@ -3370,6 +3407,7 @@ class MainWindow(QMainWindow):
             panel_state["frame"] = frame
             self.chart_splitter.addWidget(frame)
         self._rebalance_chart_splitter()
+        QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
 
     def _switch_chart_sheet(self, index: int, *, refresh: bool = True) -> None:
         if not self.chart_sheets:
@@ -3585,6 +3623,78 @@ class MainWindow(QMainWindow):
     def _rebalance_chart_splitter(self) -> None:
         if self.chart_panels:
             self.chart_splitter.setSizes([1600 // len(self.chart_panels)] * len(self.chart_panels))
+            QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+
+    def _align_chart_plot_areas(self) -> None:
+        plot_targets: list[tuple[InteractiveChartView, QChart, QRectF]] = []
+        for panel in self.chart_panels:
+            frame: ChartPanelFrame = panel.get("frame")
+            if frame is None:
+                continue
+            chart = frame.view.chart()
+            if chart is None or not chart.series():
+                continue
+            plot_area = chart.plotArea()
+            if plot_area.width() <= 0 or plot_area.height() <= 0:
+                continue
+            plot_targets.append((frame.view, chart, plot_area))
+        if len(plot_targets) <= 1:
+            return
+        left = max(plot_area.left() for _view, _chart, plot_area in plot_targets)
+        right = min(plot_area.right() for _view, _chart, plot_area in plot_targets)
+        if right - left <= 24:
+            return
+        for view, chart, plot_area in plot_targets:
+            chart.setPlotArea(QRectF(left, plot_area.top(), right - left, plot_area.height()))
+            view._refresh_cursor_labels()
+
+    def _refresh_chart_cursor_overlay(self) -> None:
+        if not hasattr(self, "chart_cursor_overlay"):
+            return
+        self.chart_cursor_overlay.setGeometry(self.chart_overlay_host.rect())
+        self.chart_cursor_overlay.raise_()
+        if self.cursor_mode == 0:
+            self.chart_cursor_overlay.set_cursor_lines([])
+            return
+        visible_views: list[tuple[InteractiveChartView, QChart, QValueAxis, QRectF]] = []
+        for panel in self.chart_panels:
+            frame: ChartPanelFrame = panel.get("frame")
+            if frame is None:
+                continue
+            chart = frame.view.chart()
+            axis_x, axis_y = frame.view._get_axes()
+            if chart is None or axis_x is None or axis_y is None or not chart.series():
+                continue
+            plot_area = chart.plotArea()
+            if plot_area.width() <= 0 or plot_area.height() <= 0:
+                continue
+            visible_views.append((frame.view, chart, axis_y, plot_area))
+        if not visible_views:
+            self.chart_cursor_overlay.set_cursor_lines([])
+            return
+        first_view, first_chart, first_axis_y, first_plot_area = visible_views[0]
+        last_view, _last_chart, _last_axis_y, last_plot_area = visible_views[-1]
+        top = float(first_view.viewport().mapTo(self.chart_overlay_host, QPoint(0, int(round(first_plot_area.top())))).y())
+        bottom = float(last_view.viewport().mapTo(self.chart_overlay_host, QPoint(0, int(round(last_plot_area.bottom())))).y())
+        cursor_lines: list[tuple[float, float, float, QColor]] = []
+        for cursor_index in range(self.cursor_mode):
+            cursor_x = self.cursor_positions[cursor_index]
+            if cursor_x is None:
+                continue
+            point = first_chart.mapToPosition(QPointF(float(cursor_x), first_axis_y.min()))
+            overlay_x = float(
+                first_view.viewport().mapTo(
+                    self.chart_overlay_host,
+                    QPoint(int(round(point.x())), int(round(first_plot_area.top()))),
+                ).x()
+            )
+            cursor_lines.append((overlay_x, top, bottom, self._shared_cursor_colors[cursor_index % len(self._shared_cursor_colors)]))
+        self.chart_cursor_overlay.set_cursor_lines(cursor_lines)
+
+    def _finalize_chart_layout(self) -> None:
+        self._align_chart_plot_areas()
+        self._apply_shared_x_range()
+        self._refresh_chart_cursor_overlay()
 
     def _visible_y_range_for_panel(self, frame_data, signal_names: list[str], visible_x_range: tuple[float, float] | None) -> tuple[float, float] | None:  # noqa: ANN001
         if frame_data.empty or "time_s" not in frame_data.columns or not signal_names:
@@ -3620,6 +3730,7 @@ class MainWindow(QMainWindow):
                 frame: ChartPanelFrame = panel["frame"]
                 frame.signal_table.set_cursor_column_visibility(0)
                 frame.view.set_cursor_state(0, [None, None])
+            self._refresh_chart_cursor_overlay()
             return
         frame_data = self._prepare_chart_frame(result)
         self.chart_status_label.setText(self._cursor_summary_text(frame_data))
@@ -3638,6 +3749,7 @@ class MainWindow(QMainWindow):
                 frame.signal_table.setItem(row_index, 1, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
                 frame.signal_table.setItem(row_index, 2, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
         self._auto_adjust_signal_table_width()
+        self._refresh_chart_cursor_overlay()
 
     def refresh_chart_panels(self) -> None:
         result = self._chart_result()
@@ -3654,6 +3766,7 @@ class MainWindow(QMainWindow):
                 frame.view.set_cursor_state(0, [None, None])
                 frame.signal_table.set_cursor_column_visibility(0)
                 frame.signal_table.setRowCount(0)
+            self._refresh_chart_cursor_overlay()
             return
         self._ensure_default_cursor_positions()
         frame_data = self._prepare_chart_frame(result)
@@ -3683,9 +3796,9 @@ class MainWindow(QMainWindow):
                 frame.signal_table.setItem(row_index, 0, signal_item)
                 frame.signal_table.setItem(row_index, 1, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
                 frame.signal_table.setItem(row_index, 2, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
-            self._apply_shared_x_range()
         self._auto_adjust_signal_table_width()
         self.chart_status_label.setText(self._cursor_summary_text(frame_data))
+        QTimer.singleShot(0, self._finalize_chart_layout)
 
     def open_output_dir(self) -> None:
         output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
@@ -3803,7 +3916,7 @@ class MainWindow(QMainWindow):
             self.log("info", "KPI、模板、接口映射和表达式信号配置已重新加载。")
 
     def _prepare_chart_frame(self, result: AnalysisResult):  # noqa: ANN001
-        cache_key = str(result.context.source_path)
+        cache_key = self._result_cache_key(result)
         cached = self._chart_frame_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -3838,6 +3951,12 @@ class MainWindow(QMainWindow):
         self._chart_frame_cache[cache_key] = frame_data
         self._chart_sample_cache[cache_key] = self._downsample_frame(frame_data)
         return frame_data
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: ANN001
+        if watched in {getattr(self, "chart_overlay_host", None), getattr(self, "chart_splitter", None)}:
+            if event.type() in {QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show, QEvent.Type.LayoutRequest}:
+                QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+        return super().eventFilter(watched, event)
 
     def create_formula_signal(self) -> None:
         dialog = FormulaSignalDialog(self._signal_browser_all, self, title="新增自定义信号")
@@ -4505,6 +4624,11 @@ class MainWindow(QMainWindow):
 
 def launch_app() -> None:
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
     window = MainWindow()
+    setattr(app, "_main_window", window)
     window.show()
+    window.showNormal()
+    window.raise_()
+    window.activateWindow()
     app.exec()

@@ -6,6 +6,7 @@
 
 - 主模块：src/tcs_smart_analyzer/main.py
 - 主窗口：src/tcs_smart_analyzer/ui/main_window.py
+- GUI 启动函数：src/tcs_smart_analyzer/ui/main_window.py 中的 launch_app()
 - 安装后命令：tcs-smart-analyzer
 
 ### CLI
@@ -53,11 +54,14 @@
 
 - 单元测试目录：tests/
 - GUI 离屏冒烟脚本：scripts/gui_smoke_check.py
+- 当前聚焦回归命令：pytest tests/test_loaders.py tests/test_engine_pipeline.py
 - 主样例数据：sample_data/tcs_demo.csv
 - 真实 Excel 样例：tests/test_dat_tcs.xlsx
 
 ## 7. 当前维护注意事项
 
 - 曲线视图状态保存在 chart_view_state.json，修改面板/信号记忆逻辑时必须同步考虑该文件。
+- 主标签切到“曲线”时会主动 refresh_chart_panels；修改曲线页首次显示逻辑时必须同步考虑这一刷新路径。
 - 接口映射系统表的 from 列是只读来源列，双击跳转逻辑依赖它的格式。
+- load_timeseries_file() 当前支持传入 required_signals，用于 BLF/ASC 总线日志按需解码；调整分析入口时要同步考虑该参数。
 - new_kpi.py 与 new_kpi_1.py 当前会被当作正式 KPI 插件参与运行时加载。

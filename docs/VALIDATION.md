@@ -2,7 +2,7 @@
 
 ## 1. 当前环境事实
 
-- 当前验证解释器：C:/Python312/python.exe
+- 当前验证解释器：c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe
 - 当前最常用安装命令：
 
 ```powershell
@@ -12,26 +12,41 @@ python -m pip install -e .[gui]
 
 ## 2. 当前应执行的验证命令
 
-### 2.1 完整 unittest
+### 2.1 聚焦回归
+
+```powershell
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m pytest tests/test_loaders.py tests/test_engine_pipeline.py
+```
+
+### 2.2 GUI 离屏冒烟
+
+```powershell
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe scripts/gui_smoke_check.py
+```
+
+### 2.3 UI/核心语法检查
+
+```powershell
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m py_compile src/tcs_smart_analyzer/ui/main_window.py src/tcs_smart_analyzer/core/engine.py src/tcs_smart_analyzer/data/loaders.py src/tcs_smart_analyzer/core/signal_mapping.py
+```
+
+### 2.4 完整基线（需要时再刷新）
 
 ```powershell
 C:/Python312/python.exe -m unittest discover -s tests -v
 ```
 
-### 2.2 CLI 样例验证
+说明：
+
+- 该命令当前保留为历史完整基线入口，但本轮没有重新执行，不应把旧统计继续写成“当前事实”。
+
+### 2.5 CLI 样例验证
 
 ```powershell
 C:/Python312/python.exe -m tcs_smart_analyzer.cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
 ```
 
-### 2.3 GUI 离屏冒烟
-
-```powershell
-$env:QT_QPA_PLATFORM="offscreen"
-C:/Python312/python.exe scripts/gui_smoke_check.py
-```
-
-### 2.4 安装程序构建
+### 2.6 安装程序构建
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
@@ -42,27 +57,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 
 ## 3. 当前真实验证结果
 
-### 3.1 unittest
+### 3.1 聚焦回归
 
 本轮实际执行结果：
 
-- 总计 42 项
-- 失败 2 项
-- 错误 8 项
-- 其余通过
+- pytest tests/test_loaders.py tests/test_engine_pipeline.py：18 项全部通过
+- scripts/gui_smoke_check.py：13 项探针全部通过
+- py_compile：main_window.py、engine.py、loaders.py、signal_mapping.py 通过
 
-当前主要失败类别：
+当前 GUI 冒烟已覆盖并通过的重点项包括：
 
-1. 测试仍引用已移除的派生量 tcs_active_avg_slip_ratio。
-2. 动态 guide 清单测试仍按旧派生量集合断言。
-3. 部分导出测试与当前接口映射前置条件不一致，触发关键字段缺失。
+- chart_scope_deduped
+- x_synced
+- chart_plot_area_full_enough
+- mapping_highlight_realtime
 
-### 3.2 CLI 与 GUI
+### 3.2 本轮未重新执行
 
-- 本轮没有重新执行 GUI 离屏冒烟。
+- 本轮没有重新执行完整 unittest/pytest 全量基线。
 - 本轮没有重新执行 CLI 导出冒烟。
+- 本轮没有重新执行真实 BLF/MF4 样本验证。
 - 本轮仅在明确发布安装程序时，才需要验证安装程序可生成并落入 installer_release/。
-- 文档中不再沿用“全部验证通过”的旧表述。
 
 ## 4. 当前人工检查口径
 
@@ -71,6 +86,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 - GUI 主页可正常入队、分组分析和查看运行日志。
 - 接口映射页缺参时会实时标红，并阻止分析。
 - 曲线页支持多面板、多选拖拽和跨面板转移。
+- 分析在非曲线页完成后，切到曲线页时首个子图不应出现大面积空白区。
 - KPI/派生量编辑器能高亮关键配置行和 CALIBRATION。
 - HTML 与 Word 报告结构一致。
 - 报告内容与结果页的分组/文件/KPI 组织一致。

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tcs-smart-analyzer"
 version = "1.2.0"
-description = "Offline desktop analyzer for TCS calibration data"
+description = "Offline desktop analyzer for TCS log data with GUI, bus decoding and report export"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -42,7 +42,14 @@ tcs-smart-analyzer-cli = "tcs_smart_analyzer.cli:main"
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-tcs_smart_analyzer = ["config/*.json"]
+tcs_smart_analyzer = [
+    "config/*.json",
+    "config/*.xlsx",
+    "config/can_databases/*.dbc",
+    "config/derived_signals/*.py",
+    "config/kpi_specs/*.py",
+    "config/report_templates/*.html",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -73,7 +73,7 @@ docs/README.md 给出了完整文档导航和阅读说明。
 ## 快速开始
 
 ```powershell
-cd "c:\Users\Ecoking\Desktop\Claude code\tcs_smart_analyzer"
+cd "c:\Users\Ecoking\Desktop\smart_analyzer\smart_analyzer"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
@@ -102,10 +102,12 @@ tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
 
 ## 当前已知事实
 
-- 本机当前验证解释器路径：C:/Python312/python.exe
+- 本机当前验证解释器路径：c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe
 - sample_data/tcs_demo.csv 是主样例输入
 - tests/test_dat_tcs.xlsx 是真实 Excel 样例
-- 当前完整测试套件并非全绿，详见 docs/PROJECT_STATUS.md 与 docs/VALIDATION.md
+- 当前最近一次聚焦回归验证为：pytest tests/test_loaders.py tests/test_engine_pipeline.py，18 项通过
+- 当前最近一次 GUI 离屏冒烟已通过，且包含曲线页 plot area 完整性探针 chart_plot_area_full_enough
+- 用户机器上仍有“分析后曲线页首次显示可能不完整”的反馈，代码已加入延后布局收尾和切到曲线页主动刷新，但仍需真实机回归确认
 - GUI 离屏冒烟脚本在 scripts/gui_smoke_check.py
 
 ## 不要再写进文档的旧说法

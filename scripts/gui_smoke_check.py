@@ -24,10 +24,20 @@ def main() -> None:
         print("derived_editor_loaded", window.derived_signal_editor_combo.count() > 0 and window.config_tabs.tabText(0) == "派生量编辑")
 
         window._analyze_paths(list(window.queue_entries))
+        for _ in range(10):
+            app.processEvents()
         print("result_table_visible", window.rule_table.rowCount() > 0)
         before = len(window.results_by_key)
         combo_before = window.result_scope_combo.count()
         print("chart_scope_deduped", window.result_scope_combo.count() == 1)
+        window.tabs.setCurrentIndex(2)
+        for _ in range(10):
+            app.processEvents()
+        first_view = window.chart_panels[0]["frame"].view if window.chart_panels else None
+        viewport_width = 0 if first_view is None else first_view.viewport().width()
+        plot_width = 0.0 if first_view is None else float(first_view.chart().plotArea().width())
+        plot_ratio = 0.0 if viewport_width <= 0 else plot_width / viewport_width
+        print("chart_plot_area_full_enough", plot_ratio >= 0.65)
         window.clear_queue()
         print("results_preserved", len(window.results_by_key) == before)
         print("scope_preserved", window.result_scope_combo.count() == combo_before)

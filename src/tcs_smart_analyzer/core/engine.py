@@ -23,7 +23,7 @@ from tcs_smart_analyzer.core.features import (
     calculate_global_kpis,
 )
 from tcs_smart_analyzer.core.models import AnalysisContext, AnalysisResult
-from tcs_smart_analyzer.core.signal_mapping import build_signal_mapping, normalize_signals
+from tcs_smart_analyzer.core.signal_mapping import build_signal_mapping, normalize_signals, resolve_requested_signal_names
 from tcs_smart_analyzer.data.loaders import SUPPORTED_FILE_TYPES, load_timeseries_file
 from tcs_smart_analyzer.data.resampler import detect_and_resample
 
@@ -170,7 +170,10 @@ class AnalysisEngine:
             self.reload_runtime_definitions(kpi_group_key=kpi_group_key)
         source_path = Path(file_path)
         generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
-        dataframe = load_timeseries_file(source_path)
+        dataframe = load_timeseries_file(
+            source_path,
+            required_signals=resolve_requested_signal_names(self.required_raw_input_signals),
+        )
         dataframe.attrs["source_path"] = str(source_path)
         dataframe.attrs["source_name"] = source_path.name
         dataframe.attrs["source_stem"] = source_path.stem

@@ -12,15 +12,24 @@
         },
         {
           "signals": [
-            "tcs_active_fl"
+            "vehicle_speed",
+            "wheel_speed_fl",
+            "wheel_speed_fr",
+            "wheel_speed_rl"
           ]
         },
         {
           "signals": [
-            "tcs_active_rr",
-            "tcs_active_rl",
-            "tcs_active_fr"
+            "tcs_max_control_time"
           ]
+        },
+        {
+          "signals": [
+            "vehicle_speed"
+          ]
+        },
+        {
+          "signals": []
         }
       ]
     }

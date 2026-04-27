@@ -940,11 +940,14 @@ class PanelSignalTable(QTableWidget):
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.setMinimumWidth(180)
-        self.setMaximumWidth(560)
+        self.setMaximumWidth(16777215)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.viewport().setAcceptDrops(True)
         self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDragDropOverwriteMode(False)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setStyleSheet(
             "QTableWidget { border: none; background: transparent; }"
@@ -1016,7 +1019,10 @@ class PanelSignalTable(QTableWidget):
     def dropEvent(self, event) -> None:  # noqa: ANN001
         signal_names, source_panel_id = _parse_signal_drag_payload(event.mimeData())
         if signal_names:
-            self._drop_callback(signal_names, source_panel_id)
+            target_row = self.indexAt(event.position().toPoint()).row()
+            if target_row < 0:
+                target_row = self.rowCount()
+            self._drop_callback(signal_names, source_panel_id, target_row)
             event.acceptProposedAction()
             return
         event.ignore()
@@ -1326,7 +1332,9 @@ class InteractiveChartView(QChartView):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._dragging_cursor_index is not None and self.chart() is not None:
-            chart_point = self.chart().mapToValue(event.position())
+            plot_area = self.chart().plotArea()
+            clamped_x = min(max(float(event.position().x()), float(plot_area.left())), float(plot_area.right()))
+            chart_point = self.chart().mapToValue(QPointF(clamped_x, event.position().y()))
             self._cursor_move_callback(self._dragging_cursor_index, float(chart_point.x()))
             event.accept()
             return
@@ -1388,6 +1396,9 @@ class InteractiveChartView(QChartView):
 
     def resizeEvent(self, event) -> None:  # noqa: ANN001
         super().resizeEvent(event)
+        chart = self.chart()
+        if chart is not None:
+            chart.setPlotArea(QRectF())
         self._refresh_cursor_labels()
 
     def dragEnterEvent(self, event) -> None:  # noqa: ANN001
@@ -1416,6 +1427,9 @@ class InteractiveChartView(QChartView):
         axis_x, _axis_y = self._get_axes()
         chart = self.chart()
         if chart is None or axis_x is None or self.cursor_mode == 0:
+            return None
+        plot_area = chart.plotArea()
+        if position.x() < plot_area.left() - 8 or position.x() > plot_area.right() + 8:
             return None
         for cursor_index in range(self.cursor_mode):
             cursor_x = self.cursor_positions[cursor_index]
@@ -1661,6 +1675,9 @@ class MainWindow(QMainWindow):
         self._mapping_persist_timer = QTimer(self)
         self._mapping_persist_timer.setSingleShot(True)
         self._mapping_persist_timer.timeout.connect(self._persist_mapping_editor_state)
+        self._chart_layout_refresh_timer = QTimer(self)
+        self._chart_layout_refresh_timer.setSingleShot(True)
+        self._chart_layout_refresh_timer.timeout.connect(self._finalize_chart_layout)
 
         self.setWindowTitle("自动化数据分析工具")
         self.resize(1720, 1060)
@@ -3230,8 +3247,11 @@ class MainWindow(QMainWindow):
         chart.setMargins(QMargins(0, 0, 0, 0))
         chart.setPlotAreaBackgroundVisible(False)
         chart.setBackgroundRoundness(0)
-        if frame.empty or "time_s" not in frame.columns or not signal_names:
+        if frame.empty or "time_s" not in frame.columns:
             return chart, None, None
+        min_x = float(frame["time_s"].min())
+        max_x = float(frame["time_s"].max())
+        x_bounds = (min_x, max_x if max_x > min_x else min_x + 1e-6)
         y_values: list[float] = []
         for index, signal_name in enumerate(signal_names):
             if signal_name not in frame.columns:
@@ -3251,19 +3271,17 @@ class MainWindow(QMainWindow):
                 has_values = True
             if has_values:
                 chart.addSeries(series)
-        if not chart.series() or not y_values:
-            return chart, None, None
-        min_x = float(frame["time_s"].min())
-        max_x = float(frame["time_s"].max())
-        x_bounds = (min_x, max_x if max_x > min_x else min_x + 1e-6)
-        y_min = min(y_values)
-        y_max = max(y_values)
-        if y_max > y_min:
-            padding = max((y_max - y_min) * 0.08, 1e-6)
-            y_bounds = (y_min - padding, y_max + padding)
+        if y_values:
+            y_min = min(y_values)
+            y_max = max(y_values)
+            if y_max > y_min:
+                padding = max((y_max - y_min) * 0.08, 1e-6)
+                y_bounds = (y_min - padding, y_max + padding)
+            else:
+                padding = max(abs(y_min) * 0.15, 1.0)
+                y_bounds = (y_min - padding, y_min + padding)
         else:
-            padding = max(abs(y_min) * 0.15, 1.0)
-            y_bounds = (y_min - padding, y_min + padding)
+            y_bounds = (0.0, 1.0)
         axis_x = QValueAxis()
         axis_x.setTitleText("")
         axis_x.setLabelsColor(QColor("#627588"))
@@ -3330,6 +3348,11 @@ class MainWindow(QMainWindow):
             self.active_chart_sheet_index = 0
         return self.chart_sheets[self.active_chart_sheet_index]
 
+    def _schedule_chart_layout_refresh(self, interval_ms: int = 80) -> None:
+        if self._chart_layout_refresh_timer.isActive():
+            self._chart_layout_refresh_timer.stop()
+        self._chart_layout_refresh_timer.start(interval_ms)
+
     def _signal_table_width_for_active_sheet(self) -> int:
         return int(self._active_chart_sheet().get("signal_table_width", 220) or 220)
 
@@ -3351,7 +3374,7 @@ class MainWindow(QMainWindow):
     def _create_chart_panel_frame(self, panel_state: dict[str, object]) -> ChartPanelFrame:
         frame = ChartPanelFrame(
             int(panel_state.get("panel_id", -1)),
-            drop_callback=lambda signal_names, source_panel_id=None, target=panel_state: self.add_signals_to_panel(target, signal_names, source_panel_id),
+            drop_callback=lambda signal_names, source_panel_id=None, target_index=None, target=panel_state: self.add_signals_to_panel(target, signal_names, source_panel_id, target_index),
             remove_callback=lambda target=panel_state: self.remove_chart_panel(target),
             cursor_move_callback=self.update_cursor_position,
             signal_remove_callback=lambda signal_name, target=panel_state: self.remove_signal_from_panel(target, signal_name),
@@ -3377,8 +3400,8 @@ class MainWindow(QMainWindow):
                 frame.set_signal_table_width(width)
         finally:
             self._signal_table_width_sync_in_progress = False
-        QTimer.singleShot(0, self._align_chart_plot_areas)
         QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+        self._schedule_chart_layout_refresh(80)
 
     def _auto_adjust_signal_table_width(self) -> None:
         if not self.chart_panels or self._signal_table_width_sync_in_progress:
@@ -3407,7 +3430,7 @@ class MainWindow(QMainWindow):
             panel_state["frame"] = frame
             self.chart_splitter.addWidget(frame)
         self._rebalance_chart_splitter()
-        QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+        self._schedule_chart_layout_refresh()
 
     def _switch_chart_sheet(self, index: int, *, refresh: bool = True) -> None:
         if not self.chart_sheets:
@@ -3498,19 +3521,35 @@ class MainWindow(QMainWindow):
         self._persist_chart_view_state()
         self.refresh_chart_panels()
 
-    def add_signals_to_panel(self, panel_state: dict[str, object], signal_names: list[str], source_panel_id: int | None = None) -> None:
+    def add_signals_to_panel(self, panel_state: dict[str, object], signal_names: list[str], source_panel_id: int | None = None, insert_index: int | None = None) -> None:
         valid_signal_names = [signal_name for signal_name in signal_names if signal_name in self.plot_signal_names]
         if not valid_signal_names:
             return
         signals: list[str] = panel_state["signals"]
-        for signal_name in valid_signal_names:
-            if signal_name not in signals:
-                signals.append(signal_name)
-        if source_panel_id is not None:
-            source_panel = self._find_chart_panel_state(source_panel_id)
-            if source_panel is not None and source_panel is not panel_state:
-                source_signals: list[str] = source_panel["signals"]
-                source_panel["signals"] = [signal_name for signal_name in source_signals if signal_name not in valid_signal_names]
+        source_panel = self._find_chart_panel_state(source_panel_id) if source_panel_id is not None else None
+        if source_panel is panel_state:
+            original_signals = list(signals)
+            existing_index = {signal_name: index for index, signal_name in enumerate(original_signals)}
+            dragged = [signal_name for signal_name in valid_signal_names if signal_name in existing_index]
+            if not dragged:
+                return
+            if insert_index is None:
+                insert_index = len(original_signals)
+            removed_before = sum(1 for signal_name in dragged if existing_index[signal_name] < insert_index)
+            remaining = [signal_name for signal_name in original_signals if signal_name not in dragged]
+            bounded_index = max(0, min(len(remaining), insert_index - removed_before))
+            panel_state["signals"] = remaining[:bounded_index] + dragged + remaining[bounded_index:]
+            self._persist_chart_view_state()
+            self.refresh_chart_panels()
+            return
+        if source_panel is not None and source_panel is not panel_state:
+            source_signals: list[str] = source_panel["signals"]
+            source_panel["signals"] = [signal_name for signal_name in source_signals if signal_name not in valid_signal_names]
+        target_signals = [signal_name for signal_name in signals if signal_name not in valid_signal_names]
+        if insert_index is None:
+            insert_index = len(target_signals)
+        bounded_index = max(0, min(len(target_signals), insert_index))
+        panel_state["signals"] = target_signals[:bounded_index] + valid_signal_names + target_signals[bounded_index:]
         self._persist_chart_view_state()
         self.refresh_chart_panels()
 
@@ -3623,7 +3662,7 @@ class MainWindow(QMainWindow):
     def _rebalance_chart_splitter(self) -> None:
         if self.chart_panels:
             self.chart_splitter.setSizes([1600 // len(self.chart_panels)] * len(self.chart_panels))
-            QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+            self._schedule_chart_layout_refresh()
 
     def _align_chart_plot_areas(self) -> None:
         plot_targets: list[tuple[InteractiveChartView, QChart, QRectF]] = []
@@ -3632,8 +3671,9 @@ class MainWindow(QMainWindow):
             if frame is None:
                 continue
             chart = frame.view.chart()
-            if chart is None or not chart.series():
+            if chart is None:
                 continue
+            chart.setPlotArea(QRectF())
             plot_area = chart.plotArea()
             if plot_area.width() <= 0 or plot_area.height() <= 0:
                 continue
@@ -3663,7 +3703,7 @@ class MainWindow(QMainWindow):
                 continue
             chart = frame.view.chart()
             axis_x, axis_y = frame.view._get_axes()
-            if chart is None or axis_x is None or axis_y is None or not chart.series():
+            if chart is None or axis_x is None or axis_y is None:
                 continue
             plot_area = chart.plotArea()
             if plot_area.width() <= 0 or plot_area.height() <= 0:
@@ -3688,6 +3728,9 @@ class MainWindow(QMainWindow):
                     QPoint(int(round(point.x())), int(round(first_plot_area.top()))),
                 ).x()
             )
+            left_limit = float(first_view.viewport().mapTo(self.chart_overlay_host, QPoint(int(round(first_plot_area.left())), 0)).x())
+            right_limit = float(first_view.viewport().mapTo(self.chart_overlay_host, QPoint(int(round(first_plot_area.right())), 0)).x())
+            overlay_x = max(left_limit, min(right_limit, overlay_x))
             cursor_lines.append((overlay_x, top, bottom, self._shared_cursor_colors[cursor_index % len(self._shared_cursor_colors)]))
         self.chart_cursor_overlay.set_cursor_lines(cursor_lines)
 
@@ -3776,11 +3819,12 @@ class MainWindow(QMainWindow):
         reference_x_range = self._shared_chart_x_range
         if reference_x_range is None and self.chart_panels:
             reference_x_range = self.chart_panels[0]["frame"].view.current_axis_ranges()[0]
+        last_axis_panel_index = len(self.chart_panels) - 1 if self.chart_panels else -1
         for panel_index, panel in enumerate(self.chart_panels):
             frame: ChartPanelFrame = panel["frame"]
             signals: list[str] = panel["signals"]
             previous_x_range, previous_y_range = frame.view.current_axis_ranges()
-            chart, x_bounds, y_bounds = self._build_signal_chart(sampled_frame, signals, self._chart_colors[panel_index:] + self._chart_colors[:panel_index], show_x_axis=panel_index == len(self.chart_panels) - 1)
+            chart, x_bounds, y_bounds = self._build_signal_chart(sampled_frame, signals, self._chart_colors[panel_index:] + self._chart_colors[:panel_index], show_x_axis=panel_index == last_axis_panel_index)
             frame.view.setChart(chart)
             frame.view.set_data_bounds(x_bounds, y_bounds)
             frame.view.set_cursor_state(self.cursor_mode, self.cursor_positions)
@@ -3798,7 +3842,7 @@ class MainWindow(QMainWindow):
                 frame.signal_table.setItem(row_index, 2, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
         self._auto_adjust_signal_table_width()
         self.chart_status_label.setText(self._cursor_summary_text(frame_data))
-        QTimer.singleShot(0, self._finalize_chart_layout)
+        self._schedule_chart_layout_refresh()
 
     def open_output_dir(self) -> None:
         output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
@@ -3956,6 +4000,7 @@ class MainWindow(QMainWindow):
         if watched in {getattr(self, "chart_overlay_host", None), getattr(self, "chart_splitter", None)}:
             if event.type() in {QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show, QEvent.Type.LayoutRequest}:
                 QTimer.singleShot(0, self._refresh_chart_cursor_overlay)
+                self._schedule_chart_layout_refresh(80)
         return super().eventFilter(watched, event)
 
     def create_formula_signal(self) -> None:
@@ -4584,6 +4629,9 @@ class MainWindow(QMainWindow):
         self._apply_mapping_row_highlight(self.custom_mapping_table, self._invalid_mapping_rows(self.custom_mapping_table))
 
     def _ensure_mapping_ready_for_analysis(self) -> bool:
+        if self._mapping_persist_timer.isActive():
+            self._mapping_persist_timer.stop()
+        self._persist_mapping_editor_state()
         invalid_system_rows = self._invalid_mapping_rows(self.system_mapping_table)
         invalid_custom_rows = self._invalid_mapping_rows(self.custom_mapping_table)
         self._apply_mapping_row_highlight(self.system_mapping_table, invalid_system_rows)

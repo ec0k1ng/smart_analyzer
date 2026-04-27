@@ -40,6 +40,10 @@
 - 当前曲线页子框信号表宽度支持自动扩展并在同一工作表内同步。
 - 当前新一轮分析会清空旧结果但保留队列；曲线缓存已经按结果实例隔离。
 - 当前 GUI 启动会在 QApplication 上保留主窗口强引用，并显式 showNormal/raise_/activateWindow。
+- 当前空子框也会保留时间轴与坐标轴；共享光标覆盖层会按所有子框贯穿，不再依赖该子框是否有信号。
+- 当前接口映射若显式填写真实信号名，则匹配策略改为严格模式，不再回退到标准名或模糊近似兜底。
+- 当前已删除所有运行时默认补值信号逻辑；缺失真实信号时必须报错或保持缺失，不能静默伪造数据。
+- 当前分析入口会先强制保存映射表编辑状态，再进入运行时重载和分析。
 
 ## 3. 当前已验证到什么程度
 
@@ -48,7 +52,8 @@
 - 主分析链、入口位置、配置目录和导出路径已经核对。
 - 最近一轮文档矩阵已同步到当前代码事实。
 - pytest tests/test_loaders.py tests/test_engine_pipeline.py 已执行，18 项全部通过。
-- scripts/gui_smoke_check.py 已重新执行，13 项探针全部通过。
+- pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py 已执行，52 项全部通过。
+- scripts/gui_smoke_check.py 已重新执行，并覆盖空末尾子框时间轴、缩放联动、光标贯穿和面板内顺序重排。
 - main_window.py、engine.py、loaders.py、signal_mapping.py 的 py_compile 已通过。
 
 ### 3.2 未重新验证

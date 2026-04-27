@@ -15,9 +15,6 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Protection
 
-from tcs_smart_analyzer.config.signal_defaults import OPTIONAL_SIGNALS_WITH_DEFAULTS
-
-
 CONFIG_DIR = Path(__file__).resolve().parent
 RULE_SPECS_DIR = CONFIG_DIR / "rule_specs"
 KPI_SPECS_DIR = CONFIG_DIR / "kpi_specs"

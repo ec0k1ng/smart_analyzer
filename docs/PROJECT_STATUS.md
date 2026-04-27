@@ -34,6 +34,7 @@
 - 已支持运行日志清空、错误跳转、算法 print 输出收集。
 - 已支持曲线页多面板、多信号拖拽、跨面板转移、横轴联动缩放。
 - 已支持共享光标覆盖线、同工作表信号表宽度同步、切到曲线页主动重刷图表。
+- 已支持空子框显示时间轴、子框尺寸变化后曲线随布局重算、共享光标贯穿所有子框、子框内信号拖拽重排。
 - 已支持新一轮分析开始时清空旧结果但保留队列，避免二次分析继续展示第一次的结果。
 - 已支持 GUI 启动时显式激活主窗口，并在 QApplication 上保留主窗口强引用。
 
@@ -44,6 +45,13 @@
 - 当前接口映射主文件：src/tcs_smart_analyzer/config/interface_mapping.xlsx
 - 当前 KPI 分组主文件：src/tcs_smart_analyzer/config/kpi_groups.json
 - 当前曲线视图记忆文件：src/tcs_smart_analyzer/config/chart_view_state.json
+
+### 2.5 当前映射链路事实
+
+- 如果接口映射表为某个标准信号显式填写了真实信号名，当前分析会严格按该名字匹配，不再回退到标准名或模糊近似匹配。
+- time_s 仍然保留加载器层的通用时间列归一化能力，但该能力不再绕过用户显式填写的 time_s 映射。
+- 运行时默认补值信号设计已删除，缺失真实信号时不再静默补零。
+- 分析前会强制保存当前映射表编辑状态，避免界面上的最新修改未参与本次分析。
 
 ## 3. 当前阻塞
 
@@ -87,8 +95,9 @@
 
 ### 6.1 本轮已实际执行
 
-- 已执行 pytest tests/test_loaders.py tests/test_engine_pipeline.py，18 项全部通过。
-- 已执行 scripts/gui_smoke_check.py，13 项探针全部通过。
+- 已执行 pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py，27 项全部通过。
+- 已执行 pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py，52 项全部通过。
+- 已执行 scripts/gui_smoke_check.py，并通过空末尾子框时间轴、缩放后联动、光标贯穿和信号重排等探针。
 - 已执行 py_compile 检查 main_window.py、engine.py、loaders.py、signal_mapping.py，无语法错误。
 
 ### 6.2 本轮未重新执行

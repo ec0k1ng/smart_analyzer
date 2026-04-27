@@ -6,11 +6,34 @@ from collections.abc import Iterable
 import pandas as pd
 
 from tcs_smart_analyzer.config.editable_configs import list_required_raw_input_signals, load_interface_mapping
-from tcs_smart_analyzer.config.signal_defaults import OPTIONAL_SIGNALS_WITH_DEFAULTS
 
 
 class SignalMappingError(ValueError):
     pass
+
+
+TIME_AXIS_ALIASES = {
+    "time",
+    "timestamps",
+    "timestamp",
+    "time[s]",
+    "time(s)",
+    "times",
+    "ts",
+    "time [s]",
+    "time (s)",
+    "t [s]",
+    "t(s)",
+    "t[s]",
+    "zeit",
+    "zeit [s]",
+    "zeit(s)",
+    "zeit[s]",
+    "time_stamp",
+    "timestamp_s",
+    "elapsed_time",
+    "t",
+}
 
 
 def _clean_column_name(name: str) -> str:
@@ -25,6 +48,19 @@ def _clean_column_name(name: str) -> str:
         if last_part and not last_part[0].isdigit():
             cleaned = last_part
     return cleaned.strip()
+
+
+def _strip_unit_suffix(name: str) -> str:
+    cleaned = re.sub(r"\s*\[.*?\]\s*$", "", name)
+    cleaned = re.sub(r"\s*\(.*?\)\s*$", "", cleaned)
+    return cleaned.strip()
+
+
+def _is_time_axis_alias(name: str) -> bool:
+    normalized = str(name).strip().lower()
+    if normalized in TIME_AXIS_ALIASES:
+        return True
+    return _strip_unit_suffix(normalized) in TIME_AXIS_ALIASES
 
 
 def resolve_requested_signal_names(required_signals: Iterable[str] | None = None) -> list[str]:
@@ -63,10 +99,14 @@ def _levenshtein_distance(s1: str, s2: str) -> int:
 def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str] | None = None) -> dict[str, str]:
     column_list = list(columns)
     normalized_lookup = {normalize_name(column): column for column in column_list}
+    exact_lookup = {str(column).strip(): column for column in column_list}
 
     cleaned_lookup: dict[str, str] = {}
+    exact_cleaned_lookup: dict[str, str] = {}
     for column in column_list:
         cleaned = _clean_column_name(column)
+        if cleaned and cleaned not in exact_cleaned_lookup:
+            exact_cleaned_lookup[cleaned] = column
         norm_cleaned = normalize_name(cleaned)
         if norm_cleaned and norm_cleaned not in cleaned_lookup:
             cleaned_lookup[norm_cleaned] = column
@@ -84,15 +124,36 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
         preferred_names = list(entry.get("actual_names", []))
         manual_column = entry.get("manual_column", "")
         aliases = list(entry.get("aliases", []))
+        explicit_names = [str(name).strip() for name in [manual_column, *preferred_names] if str(name).strip()]
+        strict_manual_mapping = bool(explicit_names)
         if manual_column and manual_column not in preferred_names:
             preferred_names = [manual_column, *preferred_names]
-        fallback_names = [standard_name, *aliases]
-        for fallback_name in fallback_names:
-            if fallback_name and fallback_name not in preferred_names:
-                preferred_names.append(fallback_name)
+        if not strict_manual_mapping:
+            fallback_names = [standard_name, *aliases]
+            for fallback_name in fallback_names:
+                if fallback_name and fallback_name not in preferred_names:
+                    preferred_names.append(fallback_name)
 
         matched = False
         for preferred_name in preferred_names:
+            exact_pref = str(preferred_name).strip()
+            if strict_manual_mapping:
+                matched_column = exact_lookup.get(exact_pref)
+                if matched_column is not None:
+                    mapping[standard_name] = matched_column
+                    matched = True
+                    break
+                cleaned_pref = _clean_column_name(exact_pref)
+                matched_column = exact_cleaned_lookup.get(cleaned_pref)
+                if matched_column is not None:
+                    mapping[standard_name] = matched_column
+                    matched = True
+                    break
+                if standard_name == "time_s" and "time_s" in exact_lookup and _is_time_axis_alias(exact_pref):
+                    mapping[standard_name] = exact_lookup["time_s"]
+                    matched = True
+                    break
+                continue
             norm_pref = normalize_name(preferred_name)
             matched_column = normalized_lookup.get(norm_pref)
             if matched_column is not None:
@@ -100,7 +161,7 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
                 matched = True
                 break
 
-        if not matched:
+        if not matched and not strict_manual_mapping:
             for preferred_name in preferred_names:
                 norm_pref = normalize_name(preferred_name)
                 matched_column = cleaned_lookup.get(norm_pref)
@@ -109,7 +170,7 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
                     matched = True
                     break
 
-        if not matched:
+        if not matched and not strict_manual_mapping:
             norm_std = normalize_name(standard_name)
             for norm_col, actual_col in cleaned_lookup.items():
                 if norm_std in norm_col or norm_col in norm_std:
@@ -118,7 +179,7 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
                         matched = True
                         break
 
-        if not matched and len(normalize_name(standard_name)) >= 5:
+        if not matched and not strict_manual_mapping and len(normalize_name(standard_name)) >= 5:
             norm_std = normalize_name(standard_name)
             best_match: str | None = None
             best_distance = 3
@@ -132,8 +193,20 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
             if best_match is not None:
                 mapping[standard_name] = best_match
 
-    required_list = [signal for signal in (required_signals or list_required_raw_input_signals()) if signal not in OPTIONAL_SIGNALS_WITH_DEFAULTS]
+    required_list = list(required_signals or list_required_raw_input_signals())
+    explicit_missing: list[str] = []
+    for standard_name in candidate_names:
+        if standard_name in mapping:
+            continue
+        entry = interface_mapping.get(standard_name, {})
+        manual_column = str(entry.get("manual_column", "")).strip()
+        actual_names = [str(name).strip() for name in entry.get("actual_names", []) if str(name).strip()]
+        if manual_column or actual_names:
+            explicit_missing.append(standard_name)
     missing = [signal for signal in required_list if signal not in mapping]
+    for signal in explicit_missing:
+        if signal not in missing:
+            missing.append(signal)
     if "tcs_active" in missing and any(name in mapping for name in ["tcs_active_fl", "tcs_active_fr", "tcs_active_rl", "tcs_active_rr"]):
         missing = [signal for signal in missing if signal != "tcs_active"]
     if missing:
@@ -159,18 +232,10 @@ def normalize_signals(dataframe: pd.DataFrame, mapping: dict[str, str]) -> pd.Da
 
     if "accel_pedal_pct" not in normalized:
         torque_request = normalized.get("torque_request_nm")
-        if torque_request is None:
-            normalized["accel_pedal_pct"] = 0.0
-        else:
+        if torque_request is not None:
             max_abs = float(torque_request.abs().max()) if not torque_request.empty else 0.0
             if max_abs > 0.0:
                 normalized["accel_pedal_pct"] = (torque_request / max_abs).clip(lower=0.0, upper=1.0) * 100.0
-            else:
-                normalized["accel_pedal_pct"] = 0.0
-
-    for standard_name, default_value in OPTIONAL_SIGNALS_WITH_DEFAULTS.items():
-        if standard_name not in normalized:
-            normalized[standard_name] = default_value
 
     return normalized.sort_values("time_s").dropna(subset=["time_s"]).reset_index(drop=True)
 

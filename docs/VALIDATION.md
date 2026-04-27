@@ -15,7 +15,7 @@ python -m pip install -e .[gui]
 ### 2.1 聚焦回归
 
 ```powershell
-c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m pytest tests/test_loaders.py tests/test_engine_pipeline.py
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py
 ```
 
 ### 2.2 GUI 离屏冒烟
@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 
 本轮实际执行结果：
 
-- pytest tests/test_loaders.py tests/test_engine_pipeline.py：18 项全部通过
+- pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py：52 项全部通过
 - scripts/gui_smoke_check.py：13 项探针全部通过
 - py_compile：main_window.py、engine.py、loaders.py、signal_mapping.py 通过
 
@@ -69,8 +69,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 
 - chart_scope_deduped
 - x_synced
+- empty_last_panel_has_time_axis
+- x_stays_synced_after_resize
+- cursor_overlay_spans_all_panels
+- panel_signal_reordered
+- 底部子框固定显示时间轴
+- 分析前映射编辑强制落盘
 - chart_plot_area_full_enough
 - mapping_highlight_realtime
+
+补充实样核对：
+
+- tests/D档驱制动，10kph以内纯液压.xlsx 的表头存在 pandas 改写后的 time.1、time.2、time.3 等重复时间列变体。
+- 当前在该样本上把 time_s 分别映射为 time1、time2、time3，都会报 SignalMappingError: 缺少关键字段，无法开始 TCS 分析: time_s。
 
 ### 3.2 本轮未重新执行
 

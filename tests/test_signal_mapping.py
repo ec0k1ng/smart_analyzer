@@ -174,6 +174,54 @@ class SignalMappingTests(unittest.TestCase):
         self.assertListEqual(normalized["tcs_active_fl"].tolist(), [0.0, 1.0])
         self.assertListEqual(normalized["tcs_active"].tolist(), [0.0, 1.0])
 
+    def test_manual_time_mapping_does_not_fallback_to_auto_normalized_time_column(self) -> None:
+        columns = ["time_s", "wheel_speed_rl", "wheel_speed_rr", "vehicle_speed", "longitudinal_accel_mps2", "tcs_active"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time1"},
+            "wheel_speed_rl": {"manual_column": "wheel_speed_rl"},
+            "wheel_speed_rr": {"manual_column": "wheel_speed_rr"},
+            "vehicle_speed": {"manual_column": "vehicle_speed"},
+            "longitudinal_accel_mps2": {"manual_column": "longitudinal_accel_mps2"},
+            "tcs_active": {"manual_column": "tcs_active"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(columns, required_signals=self._minimal_required_signals())
+
+    def test_explicit_optional_signal_mapping_must_exist(self) -> None:
+        columns = ["time_s"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time_s"},
+            "tcs_active_fl": {"manual_column": "TcsActiv(1)1"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(columns, required_signals=["time_s", "tcs_active_fl"])
+
+    def test_explicit_manual_time_mapping_does_not_match_pandas_mangled_duplicate_column(self) -> None:
+        columns = ["time", "time.1", "time.2"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time1"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(columns, required_signals=["time_s"])
+
+    def test_explicit_manual_time_mapping_accepts_loader_normalized_time_alias(self) -> None:
+        columns = ["time_s", "vehicle_speed"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time"},
+            "vehicle_speed": {"manual_column": "vehicle_speed"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            mapping = build_signal_mapping(columns, required_signals=["time_s", "vehicle_speed"])
+
+        self.assertEqual(mapping["time_s"], "time_s")
+
 
 if __name__ == "__main__":
     unittest.main()

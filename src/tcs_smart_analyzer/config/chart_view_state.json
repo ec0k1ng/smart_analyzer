@@ -6,21 +6,13 @@
       "panels": [
         {
           "signals": [
-            "vehicle_speed",
-            "wheel_speed_fl"
+            "wheel_speed_rl",
+            "vehicle_speed"
           ]
         },
         {
           "signals": [
-            "vehicle_speed",
-            "wheel_speed_fl",
-            "wheel_speed_fr",
-            "wheel_speed_rl"
-          ]
-        },
-        {
-          "signals": [
-            "tcs_max_control_time"
+            "yawrate"
           ]
         },
         {
@@ -29,7 +21,9 @@
           ]
         },
         {
-          "signals": []
+          "signals": [
+            "vehicle_speed"
+          ]
         }
       ]
     }

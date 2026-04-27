@@ -46,6 +46,8 @@ def main() -> None:
         window.add_chart_panel(["vehicle_speed"])
         window.add_chart_panel()
         print("new_panel_empty", len(window.chart_panels[-1]["signals"]) == 0)
+        empty_axis_x = window.chart_panels[-1]["frame"].view.current_axis_ranges()[0]
+        print("empty_last_panel_has_time_axis", empty_axis_x is not None)
         window.fit_x_charts()
         narrowed = (0.2, 0.5)
         window.sync_x_range_across_panels(narrowed)
@@ -53,6 +55,27 @@ def main() -> None:
         x0 = window.chart_panels[0]["frame"].view.current_axis_ranges()[0]
         x1 = window.chart_panels[1]["frame"].view.current_axis_ranges()[0]
         print("x_synced", x0 == x1 == narrowed)
+        window.chart_panels[0]["frame"].body_splitter.setSizes([900, 220])
+        window.chart_panels[1]["frame"].body_splitter.setSizes([600, 220])
+        for _ in range(10):
+            app.processEvents()
+        resized_x0 = window.chart_panels[0]["frame"].view.current_axis_ranges()[0]
+        resized_x1 = window.chart_panels[1]["frame"].view.current_axis_ranges()[0]
+        print("x_stays_synced_after_resize", resized_x0 == resized_x1 == narrowed)
+
+        window.cycle_cursor_mode()
+        for _ in range(10):
+            app.processEvents()
+        cursor_lines = list(window.chart_cursor_overlay._cursor_lines)
+        overlay_height = window.chart_overlay_host.height()
+        full_height = bool(cursor_lines) and cursor_lines[0][1] < 80 and cursor_lines[0][2] > overlay_height - 80
+        print("cursor_overlay_spans_all_panels", full_height)
+
+        panel_state = window.chart_panels[0]
+        panel_state["signals"] = ["vehicle_speed", "wheel_speed_rl"]
+        window.refresh_chart_panels()
+        window.add_signals_to_panel(panel_state, ["wheel_speed_rl"], source_panel_id=panel_state["panel_id"], insert_index=0)
+        print("panel_signal_reordered", panel_state["signals"][:2] == ["wheel_speed_rl", "vehicle_speed"])
 
         from_item = window.system_mapping_table.item(0, 1)
         mapping_item = window.system_mapping_table.item(0, 2)

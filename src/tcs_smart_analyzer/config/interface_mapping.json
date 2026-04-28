@@ -222,8 +222,7 @@
       ],
       "required_by": [
         "DQ-001",
-        "KPI:mean_vehicle_speed_kph",
-        "KPI:peak_slip_ratio",
+        "KPI:max_slip_kph",
         "PERF-001",
         "system_required"
       ]
@@ -311,7 +310,7 @@
       "required_by": [
         "DQ-001",
         "KPI:max_rear_wheel_delta_kph",
-        "KPI:peak_slip_ratio",
+        "KPI:max_slip_kph",
         "PERF-001",
         "system_required"
       ]
@@ -343,7 +342,7 @@
       "required_by": [
         "DQ-001",
         "KPI:max_rear_wheel_delta_kph",
-        "KPI:peak_slip_ratio",
+        "KPI:max_slip_kph",
         "PERF-001",
         "system_required"
       ]

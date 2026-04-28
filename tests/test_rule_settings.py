@@ -20,8 +20,8 @@ class RuleSettingsTests(unittest.TestCase):
     def test_default_kpi_threshold_settings_are_available(self) -> None:
         settings = build_default_rule_settings()
 
-        self.assertIn("peak_slip_ratio", settings)
-        self.assertAlmostEqual(float(settings["peak_slip_ratio"]["threshold"]), 0.18)
+        self.assertIn("max_slip_kph", settings)
+        self.assertAlmostEqual(float(settings["max_slip_kph"]["threshold"]), 30.0)
         self.assertEqual(settings["max_jerk_mps3"]["source"], "migrated_from_stb_001")
 
     def test_analysis_profile_overrides_thresholds_and_enabled_rules(self) -> None:

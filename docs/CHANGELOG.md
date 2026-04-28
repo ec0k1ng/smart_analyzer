@@ -1,5 +1,24 @@
 # 变更记录
 
+## 2026-04-28
+
+### 打滑量语义与映射能力升级
+
+- 曲线页在主窗口尺寸变化和窗口状态切换时会显式重建图表布局，修复最大化/窗口化后 plot area 与共享光标必须再拖一次边框才刷新的问题。
+- 现有派生量 slip_ratio 的业务语义已切换为“打滑量”，按轮速与车速差计算，并继续保证驱动打滑为正、制动打滑为负。
+- 现有派生量 tcs_target_slip_ratio_global 的业务语义已切换为“TCS 全局目标打滑量”，现在输出单值标量，由运行时自动扩展为水平线供曲线页与 KPI 复用。
+- tcs_max_control_time 已改为基于绝对打滑量进入目标带的稳定判定，并加入保持时长判据，避免瞬时穿越导致控滑时间过短。
+- 新增 KPI：mean_vehicle_speed_kph、max_yaw_rate_abs_degps、max_steering_wheel_angle_abs_deg、mean_longitudinal_accel_full_throttle_mps2。
+- 接口映射表现在允许直接填写公式表达式，例如 time_ms*0.001；表达式会在标准化阶段按原始列计算。
+- 运行时标准输入名已统一向带单位风格收敛，例如 vehicle_speed_kph、wheel_speed_fl_kph、yaw_rate_degps；同时保留旧列名兼容别名，避免曲线页历史面板立即失效。
+- 接口映射表系统信号区现在固定保证 time_s 存在且排在第一行。
+- KPI/派生量示例与详解文件现在会自动同步当前派生量目录和标准输入目录，并提示 raw_inputs 使用带单位名称与逐行注释写法。
+
+### 回归验证
+
+- py_compile：signal_mapping.py、editable_configs.py、打滑量派生量文件、相关 KPI 文件全部通过。
+- pytest tests/test_signal_mapping.py tests/test_editable_configs.py tests/test_engine_pipeline.py tests/test_rule_settings.py：44 项全部通过。
+
 ## 2026-04-27
 
 ### 曲线子框交互与显示修复
@@ -24,6 +43,7 @@
 ### 曲线页交互修复补充
 
 - 侧边信号表拖动时，光标覆盖层改为立即刷新，较重的 plot area 对齐则延后防抖执行，降低缩放迟滞和光标拖动失灵概率。
+- 窗口最大化/恢复时会统一重置各图表视图的拖拽、框选和自定义 plot area 状态，并立即重排曲线布局，缓解最大化后光标无法再拖动的问题。
 
 ### 回归验证
 

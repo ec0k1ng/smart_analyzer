@@ -4,8 +4,11 @@
       "key": "tcs",
       "name": "TCS_均一",
       "kpis": [
-        "peak_slip_ratio",
-        "tcs_active_time_s"
+        "max_slip_kph",
+        "max_steer_angle_deg",
+        "max_yaw_rate_degps",
+        "mean_full_throttle_accel_mps2",
+        "tcs_ctrl_time_max_s"
       ],
       "is_builtin": false
     },
@@ -14,7 +17,9 @@
       "name": "TCS对开",
       "kpis": [
         "max_jerk_mps3",
-        "peak_slip_ratio"
+        "tcs_ctrl_time_max_s",
+        "max_slip_kph",
+        "abs_ctrl_time_max_s"
       ],
       "is_builtin": false
     },
@@ -22,9 +27,10 @@
       "key": "abs",
       "name": "ABS制动",
       "kpis": [
+        "abs_ctrl_time_max_s",
+        "mean_full_brake_decel_mps2",
         "max_jerk_mps3"
-      ],
-      "is_builtin": false
+      ]
     }
   ]
 }

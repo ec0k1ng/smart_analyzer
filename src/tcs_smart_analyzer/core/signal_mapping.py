@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 
+import numpy as np
 import pandas as pd
 
 from tcs_smart_analyzer.config.editable_configs import list_required_raw_input_signals, load_interface_mapping
@@ -35,6 +37,28 @@ TIME_AXIS_ALIASES = {
     "t",
 }
 
+MAPPING_EXPRESSION_PREFIX = "expr:"
+
+STANDARD_SIGNAL_ALIASES = {
+    "vehicle_speed_kph": ["vehicle_speed"],
+    "wheel_speed_fl_kph": ["wheel_speed_fl"],
+    "wheel_speed_fr_kph": ["wheel_speed_fr"],
+    "wheel_speed_rl_kph": ["wheel_speed_rl"],
+    "wheel_speed_rr_kph": ["wheel_speed_rr"],
+    "yaw_rate_degps": ["yawrate"],
+}
+
+COMPATIBILITY_SIGNAL_ALIASES = {
+    "vehicle_speed": "vehicle_speed_kph",
+    "wheel_speed_fl": "wheel_speed_fl_kph",
+    "wheel_speed_fr": "wheel_speed_fr_kph",
+    "wheel_speed_rl": "wheel_speed_rl_kph",
+    "wheel_speed_rr": "wheel_speed_rr_kph",
+    "yawrate": "yaw_rate_degps",
+}
+
+_EXPRESSION_IDENTIFIER_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+
 
 def _clean_column_name(name: str) -> str:
     cleaned = str(name).strip()
@@ -63,6 +87,81 @@ def _is_time_axis_alias(name: str) -> bool:
     return _strip_unit_suffix(normalized) in TIME_AXIS_ALIASES
 
 
+def _is_mapping_expression(candidate: str) -> bool:
+    text = str(candidate).strip()
+    if not text:
+        return False
+    if text.startswith(MAPPING_EXPRESSION_PREFIX):
+        return True
+    return any(operator in text for operator in ["+", "-", "*", "/"])
+
+
+def _extract_expression_identifiers(expression: str) -> list[str]:
+    reserved = {"np", "pd", "math", "True", "False", "None", "and", "or", "not"}
+    identifiers: list[str] = []
+    for token in _EXPRESSION_IDENTIFIER_PATTERN.findall(str(expression)):
+        if token in reserved or token.isdigit() or token in identifiers:
+            continue
+        identifiers.append(token)
+    return identifiers
+
+
+def _expression_token_candidates(token: str) -> list[str]:
+    candidates = [token]
+    cleaned = _clean_column_name(token)
+    if cleaned and cleaned not in candidates:
+        candidates.append(cleaned)
+    return candidates
+
+
+def _expression_can_resolve(expression: str, exact_lookup: dict[str, str], exact_cleaned_lookup: dict[str, str], cleaned_lookup: dict[str, str]) -> bool:
+    identifiers = _extract_expression_identifiers(expression)
+    if not identifiers:
+        return False
+    for token in identifiers:
+        resolved = False
+        for candidate in _expression_token_candidates(token):
+            if candidate in exact_lookup or candidate in exact_cleaned_lookup or normalize_name(candidate) in cleaned_lookup:
+                resolved = True
+                break
+        if not resolved:
+            return False
+    return True
+
+
+def _build_expression_context(dataframe: pd.DataFrame) -> dict[str, object]:
+    context: dict[str, object] = {}
+    for column in dataframe.columns:
+        series = pd.to_numeric(dataframe[column], errors="coerce")
+        exact_name = str(column).strip()
+        if exact_name.isidentifier() and exact_name not in context:
+            context[exact_name] = series
+        cleaned_name = _clean_column_name(exact_name)
+        if cleaned_name.isidentifier() and cleaned_name not in context:
+            context[cleaned_name] = series
+    context.update({"np": np, "pd": pd, "math": math})
+    return context
+
+
+def _evaluate_mapping_expression(dataframe: pd.DataFrame, expression: str) -> pd.Series:
+    result = eval(expression, {"__builtins__": {}}, _build_expression_context(dataframe))
+    if np.isscalar(result):
+        return pd.Series([float(result)] * len(dataframe), index=dataframe.index, dtype=float)
+    if isinstance(result, pd.Series):
+        return pd.to_numeric(result.reindex(dataframe.index), errors="coerce")
+    return pd.to_numeric(pd.Series(result, index=dataframe.index), errors="coerce")
+
+
+def _iter_preferred_signal_names(standard_name: str, manual_column: str, actual_names: list[str], aliases: list[str]) -> list[str]:
+    preferred_names = list(actual_names)
+    if manual_column and manual_column not in preferred_names:
+        preferred_names = [manual_column, *preferred_names]
+    for fallback_name in [standard_name, *aliases, *STANDARD_SIGNAL_ALIASES.get(standard_name, [])]:
+        if fallback_name and fallback_name not in preferred_names:
+            preferred_names.append(fallback_name)
+    return preferred_names
+
+
 def resolve_requested_signal_names(required_signals: Iterable[str] | None = None) -> list[str]:
     interface_mapping = load_interface_mapping()
     candidate_names: list[str] = []
@@ -74,7 +173,13 @@ def resolve_requested_signal_names(required_signals: Iterable[str] | None = None
         actual_names = list(entry.get("actual_names", []))
         manual_column = entry.get("manual_column", "")
         aliases = list(entry.get("aliases", []))
-        for candidate in [manual_column, *actual_names, standard_name, *aliases]:
+        for candidate in [manual_column, *actual_names, standard_name, *aliases, *STANDARD_SIGNAL_ALIASES.get(standard_name, [])]:
+            if _is_mapping_expression(candidate):
+                for token in _extract_expression_identifiers(candidate):
+                    cleaned_token = _clean_column_name(token)
+                    if cleaned_token and cleaned_token not in candidate_names:
+                        candidate_names.append(cleaned_token)
+                continue
             cleaned_candidate = _clean_column_name(str(candidate).strip())
             if cleaned_candidate and cleaned_candidate not in candidate_names:
                 candidate_names.append(cleaned_candidate)
@@ -121,18 +226,15 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
 
     for standard_name in candidate_names:
         entry = interface_mapping.get(standard_name, {})
-        preferred_names = list(entry.get("actual_names", []))
         manual_column = entry.get("manual_column", "")
         aliases = list(entry.get("aliases", []))
+        preferred_names = list(entry.get("actual_names", []))
         explicit_names = [str(name).strip() for name in [manual_column, *preferred_names] if str(name).strip()]
         strict_manual_mapping = bool(explicit_names)
-        if manual_column and manual_column not in preferred_names:
-            preferred_names = [manual_column, *preferred_names]
         if not strict_manual_mapping:
-            fallback_names = [standard_name, *aliases]
-            for fallback_name in fallback_names:
-                if fallback_name and fallback_name not in preferred_names:
-                    preferred_names.append(fallback_name)
+            preferred_names = _iter_preferred_signal_names(standard_name, manual_column, preferred_names, aliases)
+        elif manual_column and manual_column not in preferred_names:
+            preferred_names = [manual_column, *preferred_names]
 
         matched = False
         for preferred_name in preferred_names:
@@ -151,6 +253,10 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
                     break
                 if standard_name == "time_s" and "time_s" in exact_lookup and _is_time_axis_alias(exact_pref):
                     mapping[standard_name] = exact_lookup["time_s"]
+                    matched = True
+                    break
+                if _is_mapping_expression(exact_pref) and _expression_can_resolve(exact_pref, exact_lookup, exact_cleaned_lookup, cleaned_lookup):
+                    mapping[standard_name] = f"{MAPPING_EXPRESSION_PREFIX}{exact_pref.removeprefix(MAPPING_EXPRESSION_PREFIX)}"
                     matched = True
                     break
                 continue
@@ -209,6 +315,14 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
             missing.append(signal)
     if "tcs_active" in missing and any(name in mapping for name in ["tcs_active_fl", "tcs_active_fr", "tcs_active_rl", "tcs_active_rr"]):
         missing = [signal for signal in missing if signal != "tcs_active"]
+    abs_bundle = ["abs_active", "abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"]
+    if "abs_active" in missing and any(name in mapping for name in ["abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"]):
+        missing = [signal for signal in missing if signal != "abs_active"]
+    if any(name in mapping for name in abs_bundle):
+        if "abs_active" in mapping:
+            missing = [signal for signal in missing if signal not in ["abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"]]
+    else:
+        missing = [signal for signal in missing if signal not in abs_bundle]
     if missing:
         raise SignalMappingError(
             "缺少关键字段，无法开始 TCS 分析: " + ", ".join(missing)
@@ -220,7 +334,14 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
 def normalize_signals(dataframe: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
     normalized = pd.DataFrame()
     for standard_name, source_column in mapping.items():
-        normalized[standard_name] = pd.to_numeric(dataframe[source_column], errors="coerce")
+        if str(source_column).startswith(MAPPING_EXPRESSION_PREFIX):
+            normalized[standard_name] = _evaluate_mapping_expression(dataframe, str(source_column)[len(MAPPING_EXPRESSION_PREFIX) :])
+        else:
+            normalized[standard_name] = pd.to_numeric(dataframe[source_column], errors="coerce")
+
+    for alias_name, canonical_name in COMPATIBILITY_SIGNAL_ALIASES.items():
+        if canonical_name in normalized and alias_name not in normalized:
+            normalized[alias_name] = pd.to_numeric(normalized[canonical_name], errors="coerce")
 
     wheel_tcs_columns = [name for name in ["tcs_active_fl", "tcs_active_fr", "tcs_active_rl", "tcs_active_rr"] if name in normalized]
     if "tcs_active" not in normalized and wheel_tcs_columns:
@@ -229,6 +350,14 @@ def normalize_signals(dataframe: pd.DataFrame, mapping: dict[str, str]) -> pd.Da
         for wheel_column in ["tcs_active_fl", "tcs_active_fr", "tcs_active_rl", "tcs_active_rr"]:
             if wheel_column not in normalized:
                 normalized[wheel_column] = pd.to_numeric(normalized["tcs_active"], errors="coerce")
+
+    wheel_abs_columns = [name for name in ["abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"] if name in normalized]
+    if "abs_active" not in normalized and wheel_abs_columns:
+        normalized["abs_active"] = normalized[wheel_abs_columns].fillna(0.0).any(axis=1).astype(float)
+    if "abs_active" in normalized:
+        for wheel_column in ["abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"]:
+            if wheel_column not in normalized:
+                normalized[wheel_column] = pd.to_numeric(normalized["abs_active"], errors="coerce")
 
     if "accel_pedal_pct" not in normalized:
         torque_request = normalized.get("torque_request_nm")

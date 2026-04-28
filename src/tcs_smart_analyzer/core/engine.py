@@ -264,9 +264,8 @@ class AnalysisEngine:
             "pass_count": pass_count,
             "warning_count": warning_count,
             "fail_count": fail_count,
-            "peak_slip_ratio": kpi_lookup.get("peak_slip_ratio", 0.0),
+            "max_slip_kph": kpi_lookup.get("max_slip_kph", 0.0),
             "max_jerk_mps3": kpi_lookup.get("max_jerk_mps3", 0.0),
-            "mean_vehicle_speed_kph": kpi_lookup.get("mean_vehicle_speed_kph", 0.0),
         }
 
     def build_batch_summary_frame(self, results: list[AnalysisResult]) -> pd.DataFrame:

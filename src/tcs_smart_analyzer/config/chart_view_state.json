@@ -5,25 +5,27 @@
       "name": "工作表 1",
       "panels": [
         {
+          "signals": []
+        },
+        {
           "signals": [
-            "wheel_speed_rl",
-            "vehicle_speed"
+            "slip_kph",
+            "tcs_target_slip_kph",
+            "abs_target_slip_kph"
           ]
         },
         {
           "signals": [
-            "yawrate"
+            "abs_ctrl_time_max_s"
           ]
         },
         {
           "signals": [
-            "vehicle_speed"
+            "mean_full_throttle_accel_mps2"
           ]
         },
         {
-          "signals": [
-            "vehicle_speed"
-          ]
+          "signals": []
         }
       ]
     }

@@ -11,7 +11,7 @@ from tcs_smart_analyzer.core.signal_mapping import SignalMappingError, build_sig
 class SignalMappingTests(unittest.TestCase):
     @staticmethod
     def _minimal_required_signals() -> list[str]:
-        return ["time_s", "wheel_speed_rl", "wheel_speed_rr", "vehicle_speed", "longitudinal_accel_mps2", "tcs_active"]
+        return ["time_s", "wheel_speed_rl_kph", "wheel_speed_rr_kph", "vehicle_speed_kph", "longitudinal_accel_mps2", "tcs_active"]
 
     def test_build_signal_mapping_uses_manual_interface_mapping(self) -> None:
         columns = [
@@ -24,9 +24,9 @@ class SignalMappingTests(unittest.TestCase):
         ]
         interface_mapping = {
             "time_s": {"manual_column": "TimeColumn"},
-            "wheel_speed_rl": {"manual_column": "RearLeftSpeed"},
-            "wheel_speed_rr": {"manual_column": "RearRightSpeed"},
-            "vehicle_speed": {"manual_column": "VehicleRefSpeed"},
+            "wheel_speed_rl_kph": {"manual_column": "RearLeftSpeed"},
+            "wheel_speed_rr_kph": {"manual_column": "RearRightSpeed"},
+            "vehicle_speed_kph": {"manual_column": "VehicleRefSpeed"},
             "longitudinal_accel_mps2": {"manual_column": "LongAccColumn"},
             "tcs_active": {"manual_column": "TCSFlagColumn"},
         }
@@ -35,7 +35,7 @@ class SignalMappingTests(unittest.TestCase):
             mapping = build_signal_mapping(columns, required_signals=self._minimal_required_signals())
 
         self.assertEqual(mapping["time_s"], "TimeColumn")
-        self.assertEqual(mapping["vehicle_speed"], "VehicleRefSpeed")
+        self.assertEqual(mapping["vehicle_speed_kph"], "VehicleRefSpeed")
         self.assertEqual(mapping["longitudinal_accel_mps2"], "LongAccColumn")
         self.assertEqual(mapping["tcs_active"], "TCSFlagColumn")
 
@@ -52,9 +52,9 @@ class SignalMappingTests(unittest.TestCase):
         )
         interface_mapping = {
             "time_s": {"manual_column": "TimeColumn"},
-            "wheel_speed_rl": {"manual_column": "RearLeftSpeed"},
-            "wheel_speed_rr": {"manual_column": "RearRightSpeed"},
-            "vehicle_speed": {"manual_column": "VehicleRefSpeed"},
+            "wheel_speed_rl_kph": {"manual_column": "RearLeftSpeed"},
+            "wheel_speed_rr_kph": {"manual_column": "RearRightSpeed"},
+            "vehicle_speed_kph": {"manual_column": "VehicleRefSpeed"},
             "longitudinal_accel_mps2": {"manual_column": "LongAccColumn"},
             "tcs_active": {"manual_column": "TCSFlagColumn"},
         }
@@ -99,7 +99,7 @@ class SignalMappingTests(unittest.TestCase):
             mapping = build_signal_mapping(frame.columns, required_signals=self._minimal_required_signals())
 
         self.assertEqual(mapping["time_s"], "time_s")
-        self.assertEqual(mapping["vehicle_speed"], "vehicle_speed")
+        self.assertEqual(mapping["vehicle_speed_kph"], "vehicle_speed")
         self.assertEqual(mapping["tcs_active"], "tcs_active")
 
     def test_manual_interface_mapping_overrides_aliases(self) -> None:
@@ -114,9 +114,9 @@ class SignalMappingTests(unittest.TestCase):
 
         interface_mapping = {
             "time_s": {"manual_column": "MyTime"},
-            "wheel_speed_rl": {"manual_column": "RearLeft"},
-            "wheel_speed_rr": {"manual_column": "RearRight"},
-            "vehicle_speed": {"manual_column": "VehicleRef"},
+            "wheel_speed_rl_kph": {"manual_column": "RearLeft"},
+            "wheel_speed_rr_kph": {"manual_column": "RearRight"},
+            "vehicle_speed_kph": {"manual_column": "VehicleRef"},
             "longitudinal_accel_mps2": {"manual_column": "LongAcc"},
             "tcs_active": {"manual_column": "TCSFlag"},
         }
@@ -125,7 +125,7 @@ class SignalMappingTests(unittest.TestCase):
             mapping = build_signal_mapping(columns, required_signals=self._minimal_required_signals())
 
         self.assertEqual(mapping["time_s"], "MyTime")
-        self.assertEqual(mapping["vehicle_speed"], "VehicleRef")
+        self.assertEqual(mapping["vehicle_speed_kph"], "VehicleRef")
         self.assertEqual(mapping["tcs_active"], "TCSFlag")
 
     def test_manual_interface_mapping_supports_non_builtin_standard_names(self) -> None:
@@ -157,9 +157,9 @@ class SignalMappingTests(unittest.TestCase):
 
         interface_mapping = {
             "time_s": {"manual_column": "time"},
-            "wheel_speed_rl": {"manual_column": "whlspd_rl"},
-            "wheel_speed_rr": {"manual_column": "whlspd_rr"},
-            "vehicle_speed": {"manual_column": "veh_spd"},
+            "wheel_speed_rl_kph": {"manual_column": "whlspd_rl"},
+            "wheel_speed_rr_kph": {"manual_column": "whlspd_rr"},
+            "vehicle_speed_kph": {"manual_column": "veh_spd"},
             "longitudinal_accel_mps2": {"manual_column": "LongAcc"},
             "tcs_active_fl": {"manual_column": "TcsActiv(1)"},
         }
@@ -178,9 +178,9 @@ class SignalMappingTests(unittest.TestCase):
         columns = ["time_s", "wheel_speed_rl", "wheel_speed_rr", "vehicle_speed", "longitudinal_accel_mps2", "tcs_active"]
         interface_mapping = {
             "time_s": {"manual_column": "time1"},
-            "wheel_speed_rl": {"manual_column": "wheel_speed_rl"},
-            "wheel_speed_rr": {"manual_column": "wheel_speed_rr"},
-            "vehicle_speed": {"manual_column": "vehicle_speed"},
+            "wheel_speed_rl_kph": {"manual_column": "wheel_speed_rl"},
+            "wheel_speed_rr_kph": {"manual_column": "wheel_speed_rr"},
+            "vehicle_speed_kph": {"manual_column": "vehicle_speed"},
             "longitudinal_accel_mps2": {"manual_column": "longitudinal_accel_mps2"},
             "tcs_active": {"manual_column": "tcs_active"},
         }
@@ -214,13 +214,32 @@ class SignalMappingTests(unittest.TestCase):
         columns = ["time_s", "vehicle_speed"]
         interface_mapping = {
             "time_s": {"manual_column": "time"},
-            "vehicle_speed": {"manual_column": "vehicle_speed"},
+            "vehicle_speed_kph": {"manual_column": "vehicle_speed"},
         }
 
         with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
-            mapping = build_signal_mapping(columns, required_signals=["time_s", "vehicle_speed"])
+            mapping = build_signal_mapping(columns, required_signals=["time_s", "vehicle_speed_kph"])
 
         self.assertEqual(mapping["time_s"], "time_s")
+
+    def test_manual_mapping_can_use_formula_expression(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "time_ms": [0.0, 100.0, 200.0],
+                "vehicle_speed": [1.0, 2.0, 3.0],
+            }
+        )
+        interface_mapping = {
+            "time_s": {"manual_column": "time_ms*0.001"},
+            "vehicle_speed_kph": {"manual_column": "vehicle_speed"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            mapping = build_signal_mapping(frame.columns, required_signals=["time_s", "vehicle_speed_kph"])
+            normalized = normalize_signals(frame, mapping)
+
+        self.assertEqual(mapping["time_s"], "expr:time_ms*0.001")
+        self.assertListEqual(normalized["time_s"].tolist(), [0.0, 0.1, 0.2])
 
 
 if __name__ == "__main__":

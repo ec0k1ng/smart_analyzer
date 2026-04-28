@@ -31,23 +31,46 @@ SYSTEM_MAPPING_SHEET = "系统信号"
 CUSTOM_MAPPING_SHEET = "自定义信号"
 GUIDE_SHEET = "说明"
 REFERENCE_SHEET = "参考信息"
-SYSTEM_INTERFACE_MAPPING_HEADERS = [
-    "raw_input_name",
-    "from",
-    "actual_signal_name_1",
-    "actual_signal_name_2",
-    "actual_signal_name_3",
-    "actual_signal_name_4",
-    "actual_signal_name_5",
-]
-CUSTOM_INTERFACE_MAPPING_HEADERS = [
-    "raw_input_name",
-    "actual_signal_name_1",
-    "actual_signal_name_2",
-    "actual_signal_name_3",
-    "actual_signal_name_4",
-    "actual_signal_name_5",
-]
+INTERFACE_MAPPING_METADATA_SHEET = "_metadata"
+DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT = 3
+
+
+def build_system_interface_mapping_headers(actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> list[str]:
+    count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    return ["raw_input_name", "description", "from", *[f"actual_signal_name_{index}" for index in range(1, count + 1)]]
+
+
+def build_custom_interface_mapping_headers(actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> list[str]:
+    count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    return ["raw_input_name", *[f"actual_signal_name_{index}" for index in range(1, count + 1)]]
+
+RAW_INPUT_DESCRIPTIONS = {
+    "time_s": "时间轴，单位 s，必须配置且固定排在第一行。",
+    "vehicle_speed_kph": "车速，单位 kph。",
+    "wheel_speed_fl_kph": "左前轮轮速，单位 kph。",
+    "wheel_speed_fr_kph": "右前轮轮速，单位 kph。",
+    "wheel_speed_rl_kph": "左后轮轮速，单位 kph。",
+    "wheel_speed_rr_kph": "右后轮轮速，单位 kph。",
+    "longitudinal_accel_mps2": "纵向加速度，单位 m/s^2。",
+    "yaw_rate_degps": "横摆角速度，单位 deg/s。",
+    "steering_wheel_angle_deg": "方向盘转角，单位 deg。",
+    "accel_pedal_pct": "油门开度，单位 %。",
+    "brake_depth_pct": "制动深度，单位 %。",
+    "torque_request_nm": "请求扭矩，单位 Nm。",
+    "torque_actual_nm": "实际扭矩，单位 Nm。",
+    "brake_pressure_fl_bar": "左前制动压力，单位 bar。",
+    "brake_pressure_fr_bar": "右前制动压力，单位 bar。",
+    "tcs_active": "TCS 总激活标志，布尔/0-1。",
+    "tcs_active_fl": "左前轮 TCS 激活标志，布尔/0-1。",
+    "tcs_active_fr": "右前轮 TCS 激活标志，布尔/0-1。",
+    "tcs_active_rl": "左后轮 TCS 激活标志，布尔/0-1。",
+    "tcs_active_rr": "右后轮 TCS 激活标志，布尔/0-1。",
+    "abs_active": "ABS 总激活标志，布尔/0-1。",
+    "abs_active_fl": "左前轮 ABS 激活标志，布尔/0-1。",
+    "abs_active_fr": "右前轮 ABS 激活标志，布尔/0-1。",
+    "abs_active_rl": "左后轮 ABS 激活标志，布尔/0-1。",
+    "abs_active_rr": "右后轮 ABS 激活标志，布尔/0-1。",
+}
 
 DEFAULT_RULE_TEMPLATE = '''from __future__ import annotations
 
@@ -90,11 +113,15 @@ IS_TEMPLATE = False
 KPI_DEFINITION = {{
     "name": "{kpi_name}",
     "title": "{title}",
-    "raw_inputs": ["time_s", "vehicle_speed"],
+    "raw_inputs": [
+        "time_s",  # 时间轴，单位 s
+        "vehicle_speed_kph",  # 车速，单位 kph
+    ],
     "derived_inputs": [],
     "trend_source": "{kpi_name}",
     "unit": "",
     "description": "说明这个 KPI 计算的业务含义",
+    "algorithm_summary": "用文字概述算法思路、关键公式和边界处理方式",
     "threshold": 0.0,
     "source": "kpi_definition",
     "pass_condition": "value <= threshold",
@@ -113,7 +140,7 @@ def calculate_kpi(dataframe):
 
 
 def calculate_kpi_series(dataframe):
-    return dataframe["vehicle_speed"].fillna(CALIBRATION["missing_value_fill"])
+    return dataframe["vehicle_speed_kph"].fillna(CALIBRATION["missing_value_fill"])
 '''
 
 DEFAULT_DERIVED_SIGNAL_TEMPLATE = '''from __future__ import annotations
@@ -126,7 +153,10 @@ import pandas as pd
 DERIVED_SIGNAL_DEFINITION = {{
     "name": "{signal_name}",
     "title": "{title}",
-    "raw_inputs": ["vehicle_speed"],
+    "raw_inputs": [
+        "time_s",  # 时间轴，单位 s
+        "vehicle_speed_kph",  # 车速，单位 kph
+    ],
     "derived_inputs": [],
     "description": "说明这个派生量的业务含义，以及哪些 KPI 会复用它",
     "algorithm_summary": "用文字概述算法思路、关键公式和边界处理方式",
@@ -138,7 +168,7 @@ CALIBRATION = {{
 
 
 def calculate_signal(dataframe):
-    return pd.to_numeric(dataframe["vehicle_speed"], errors="coerce").fillna(CALIBRATION["missing_fill_value"])
+    return pd.to_numeric(dataframe["vehicle_speed_kph"], errors="coerce").fillna(CALIBRATION["missing_fill_value"])
 '''
 
 DEFAULT_DERIVED_SIGNAL_GUIDE_TEMPLATE = """GUIDE_TEXT = '''派生量示例与详细讲解
@@ -147,9 +177,6 @@ DEFAULT_DERIVED_SIGNAL_GUIDE_TEMPLATE = """GUIDE_TEXT = '''派生量示例与详
 1. 这是 UI 下拉菜单中的第一个选项，用于给用户查看派生量格式。
 2. 这不是实际执行派生量，分析引擎会自动跳过该文件。
 3. 派生量用于承载多个 KPI 共用、且希望只计算一次的中间序列。
-
-当前可用派生量清单：
-{{DERIVED_CATALOG}}
 
 给 AI 的格式化要求：
 请为 TCS Smart Analyzer 生成一个派生量 Python 文件，严格按下面格式输出，不要解释：
@@ -161,9 +188,12 @@ IS_TEMPLATE = False
 import pandas as pd
 
 DERIVED_SIGNAL_DEFINITION = {
-    "name": "唯一派生量名称，例如 slip_ratio。必须使用英文，因为它会作为信号名参与依赖声明、绘图和计算引用",
+    "name": "唯一派生量名称，例如 slip_kph。必须使用英文，因为它会作为信号名参与依赖声明、绘图和计算引用",
     "title": "派生量标题。请使用中文，供界面标签、下拉框和结果说明展示",
-    "raw_inputs": ["这里列出直接依赖的标准输入信号名"],
+    "raw_inputs": [
+        "time_s",  # 示例：时间轴，单位 s
+        "vehicle_speed_kph",  # 示例：车速，单位 kph
+    ],
     "derived_inputs": ["如果依赖其他派生量，在这里列出，可为空"],
     "description": "说明这个派生量代表什么，以及哪些 KPI 会复用它",
     "algorithm_summary": "用文字概述算法思路、关键公式和边界处理方式",
@@ -178,6 +208,8 @@ def calculate_signal(dataframe):
 
 说明：
 - 对用户来说，raw_inputs 就是唯一需要维护的输入声明；接口映射表第一列会自动由所有 KPI 和派生量的 raw_inputs 汇总同步，不需要再额外维护另一份“必需信号清单”。
+- raw_inputs 里的标准输入名称应带单位，例如 vehicle_speed_kph、yaw_rate_degps；布尔状态量保持语义名即可。
+- raw_inputs 建议逐行书写并在右侧补注释，明确物理意义与单位，避免接口映射和算法理解歧义。
 - 派生量通常应输出一个与数据长度一致、随时间连续变化的过程曲线；只有当该量明确表示“整个文件的固有标量属性”时，才允许返回全时段同一数值的水平直线。
 - 如果你认为派生量应该输出水平直线，必须先和用户确认它到底是“单值标量属性”还是“实时连续变化量”；未确认前不允许自作主张。
 - calculate_signal(dataframe) 必须返回一个与数据长度一致的序列，曲线界面会直接按 DERIVED_SIGNAL_DEFINITION["name"] 显示这条派生量曲线。
@@ -191,7 +223,14 @@ def calculate_signal(dataframe):
 - 所有可调算法参数都应集中放在 CALIBRATION 区块，放在定义区后、函数前；不要把标定量零散写在文件各处。
 - CALIBRATION 里的键名请使用 snake_case，并尽量把物理意义、工况或单位写进名字；每个条目右侧都要写中文注释。
 - 如果派生量依赖其他派生量，请把被依赖项完整写进 derived_inputs，格式与 KPI 文件中的 derived_inputs 保持一致。
+- 当前清单中的每一行都已压缩展示；连字符后面的说明优先取算法概述，没有算法概述时才回退到 description。
 - 如果某个派生量只在局部工况下有业务意义，建议在 description 和 algorithm_summary 里写清楚非有效区间是返回 0.0、保持上一值、NaN 还是其它占位值；这不是硬编码格式要求，但最好提前讲明，避免曲线含义不清。
+
+当前可用派生量清单：
+{{DERIVED_CATALOG}}
+
+当前接口映射表中的标准输入量：
+{{RAW_INPUT_CATALOG}}
 '''
 
 IS_TEMPLATE = True
@@ -341,9 +380,6 @@ KPI_GUIDE_TEMPLATE = '''GUIDE_TEXT = """KPI 示例与详细讲解
 2. 这不是实际执行 KPI，分析引擎会自动跳过该文件。
 3. 现在不再单独维护规则文件。每一项 KPI 自己同时定义“数值如何算”和“结果如何判定”。
 
-当前可用派生量清单：
-{{DERIVED_CATALOG}}
-
 给 AI 的格式化要求：
 请为 TCS Smart Analyzer 生成一个 KPI Python 文件，严格按下面格式输出，不要解释：
 
@@ -352,13 +388,17 @@ from __future__ import annotations
 IS_TEMPLATE = False
 
 KPI_DEFINITION = {
-    "name": "唯一KPI名称，例如 peak_slip_ratio。必须使用英文，因为它会作为KPI信号名参与依赖、绘图和结果索引",
+    "name": "唯一KPI名称，例如 max_slip_kph。必须使用英文，因为它会作为KPI信号名参与依赖、绘图和结果索引",
     "title": "KPI标题。请使用中文，供界面标签、结果表和报告展示",
-    "raw_inputs": ["这里列出 KPI 自己直接依赖的标准输入信号名"],
-    "derived_inputs": ["如果依赖派生量，在这里列出，例如 slip_ratio"],
-    "trend_source": "必须与 name 完全一致，例如 peak_slip_ratio。曲线界面的 KPI 信号只认 KPI 自己的 name",
+    "raw_inputs": [
+        "time_s",  # 示例：时间轴，单位 s
+        "vehicle_speed_kph",  # 示例：车速，单位 kph
+    ],
+    "derived_inputs": ["如果依赖派生量，在这里列出，例如 slip_kph"],
+    "trend_source": "必须与 name 完全一致，例如 max_slip_kph。曲线界面的 KPI 信号只认 KPI 自己的 name",
     "unit": "单位",
     "description": "说明这个 KPI 算出来代表什么",
+    "algorithm_summary": "用文字概述算法思路、关键公式和边界处理方式",
     "threshold": 0.0,
     "source": "阈值来源说明",
     "pass_condition": "value <= threshold",
@@ -379,8 +419,11 @@ def calculate_kpi_series(dataframe):
 
 说明：
 - 对用户来说，raw_inputs 是唯一需要维护的输入声明；接口映射表第一列会自动由所有 KPI 和派生量的 raw_inputs 汇总同步，不需要再额外维护另一份“必需信号清单”。
+- raw_inputs 里的标准输入名称应带单位，例如 vehicle_speed_kph、wheel_speed_fl_kph、yaw_rate_degps。
+- raw_inputs 建议逐行书写并在右侧补注释，明确物理意义与单位。
 - calculate_kpi(dataframe)：功能实现字段，负责用 Python 算出 KPI 数值。
 - calculate_kpi_series(dataframe)：必填字段，必须返回与数据长度一致的连续过程曲线，供曲线界面实时检查 KPI 算法过程和峰值位置。
+- algorithm_summary：必填字段，用一句到几句中文讲清楚算法核心逻辑、关键公式和边界处理。
 - 不要输出 DISPLAY_NAME，也不要把用户新建 KPI 文件写成 IS_TEMPLATE = True；这两个字段只属于系统示例文件，不属于实际 KPI 定义。
 - 如果多个 KPI 共用同一个中间量，应优先把它抽成派生量，并在 derived_inputs 中显式声明依赖。
 - 如果某个中间量只被当前 KPI 使用，也可以继续直接写在 KPI 文件内，保持算法透明可改。
@@ -399,7 +442,14 @@ def calculate_kpi_series(dataframe):
 - dataframe.attrs["mapped_columns"]：标准信号到实际信号名的映射字典。
 - 若你要让 AI 同时设计 KPI 与报告模板，还要明确告诉它：报告模板阶段可额外使用 report_title、metadata、kpis、rules、results、files、file_count 等变量。
 - raw_inputs 会自动进入接口映射 Excel 第一列来源统计，所以一定要写全。
+- 当前清单中的每一行都已压缩展示；连字符后面的说明优先取算法概述，没有算法概述时才回退到 description。
 - derived_inputs 不会直接参与接口映射，但它引用的派生量 raw_inputs 也会自动进入接口映射来源统计。
+
+当前可用派生量清单：
+{{DERIVED_CATALOG}}
+
+当前接口映射表中的标准输入量：
+{{RAW_INPUT_CATALOG}}
 """
 
 IS_TEMPLATE = True
@@ -883,6 +933,7 @@ def _load_derived_signal_catalog_for_guides() -> list[dict[str, str]]:
         catalog.append(
             {
                 "name": name,
+                "title": str(definition.get("title", "")).strip(),
                 "description": str(definition.get("description", "")).strip(),
                 "algorithm_summary": str(definition.get("algorithm_summary", "")).strip(),
             }
@@ -897,14 +948,9 @@ def _render_derived_catalog_for_kpi_guide() -> str:
 
     lines: list[str] = []
     for index, item in enumerate(catalog, start=1):
-        lines.extend(
-            [
-                f"{index}. {item['name']}",
-                f"   描述：{item['description'] or '未填写'}",
-                f"   算法概述：{item['algorithm_summary'] or '未填写'}",
-                "",
-            ]
-        )
+        summary = item["algorithm_summary"] or item["description"] or "未填写"
+        title = item["title"] or "未填写title"
+        lines.append(f"{index}. {item['name']} - {title} - {summary}")
     return "\n".join(lines).rstrip()
 
 
@@ -915,24 +961,61 @@ def _render_derived_catalog_for_derived_guide() -> str:
 
     lines: list[str] = []
     for index, item in enumerate(catalog, start=1):
-        lines.extend(
-            [
-                f"{index}. {item['name']}",
-                f"   描述：{item['description'] or '未填写'}",
-                f"   算法概述：{item['algorithm_summary'] or '未填写'}",
-                "",
-            ]
-        )
+        summary = item["algorithm_summary"] or item["description"] or "未填写"
+        title = item["title"] or "未填写title"
+        lines.append(f"{index}. {item['name']} - {title} - {summary}")
+    return "\n".join(lines).rstrip()
+
+
+def _ordered_raw_input_names(raw_names: list[str] | set[str] | tuple[str, ...]) -> list[str]:
+    normalized = sorted({str(item).strip() for item in raw_names if str(item).strip()}, key=str.lower)
+    if "time_s" in normalized:
+        normalized.remove("time_s")
+        normalized.insert(0, "time_s")
+    return normalized
+
+
+def _render_raw_input_catalog_for_guides() -> str:
+    required_by: dict[str, list[str]] = {"time_s": []}
+    for directory, definition_name, owner_prefix in [
+        (KPI_SPECS_DIR, "KPI_DEFINITION", "KPI"),
+        (DERIVED_SIGNALS_DIR, "DERIVED_SIGNAL_DEFINITION", "派生量"),
+    ]:
+        for path in _guide_iter_python_files(directory):
+            if _is_system_template_path(path):
+                continue
+            module = _load_python_module(path, f"guide_raw_inputs_{directory.name}")
+            definition = getattr(module, definition_name, {}) or {}
+            owner_name = str(definition.get("name", "")).strip()
+            if not owner_name:
+                continue
+            for signal_name in definition.get("raw_inputs", []):
+                normalized_signal = str(signal_name).strip()
+                if not normalized_signal:
+                    continue
+                required_by.setdefault(normalized_signal, []).append(f"{owner_prefix}:{owner_name}")
+    if not required_by:
+        return "- 当前尚未定义标准输入量。"
+
+    lines: list[str] = []
+    for index, signal_name in enumerate(_ordered_raw_input_names(list(required_by)), start=1):
+        description = RAW_INPUT_DESCRIPTIONS.get(signal_name, "请补充该输入量的物理意义与单位说明。")
+        lines.append(f"{index}. {signal_name} - {description}")
     return "\n".join(lines).rstrip()
 
 
 def _render_kpi_guide_template() -> str:
-    return KPI_GUIDE_TEMPLATE.replace("{{DERIVED_CATALOG}}", _render_derived_catalog_for_kpi_guide())
+    return (
+        KPI_GUIDE_TEMPLATE.replace("{{DERIVED_CATALOG}}", _render_derived_catalog_for_kpi_guide())
+        .replace("{{RAW_INPUT_CATALOG}}", _render_raw_input_catalog_for_guides())
+    )
 
 
 def _refresh_generated_guide_files() -> None:
     (DERIVED_SIGNALS_DIR / "00_example_and_guide.py").write_text(
-        DEFAULT_DERIVED_SIGNAL_GUIDE_TEMPLATE.replace("{{DERIVED_CATALOG}}", _render_derived_catalog_for_derived_guide()),
+        DEFAULT_DERIVED_SIGNAL_GUIDE_TEMPLATE.replace("{{DERIVED_CATALOG}}", _render_derived_catalog_for_derived_guide()).replace(
+            "{{RAW_INPUT_CATALOG}}", _render_raw_input_catalog_for_guides()
+        ),
         encoding="utf-8",
     )
     (KPI_SPECS_DIR / "00_example_and_guide.py").write_text(_render_kpi_guide_template(), encoding="utf-8")
@@ -1070,14 +1153,21 @@ def load_kpi_groups() -> list[dict[str, Any]]:
     _ensure_supporting_files()
     raw = _read_json(KPI_GROUPS_PATH)
     groups = raw.get("groups", []) if isinstance(raw, dict) else []
-    normalized: list[dict[str, Any]] = [_default_kpi_group()]
+    default_group = _default_kpi_group()
+    normalized: list[dict[str, Any]] = [default_group]
     for item in groups:
         if not isinstance(item, dict):
             continue
         key = str(item.get("key", "")).strip()
         name = str(item.get("name", "")).strip()
-        kpis = sorted({str(value).strip() for value in item.get("kpis", []) if str(value).strip()})
-        if not key or not name:
+        kpis = [str(value).strip() for value in item.get("kpis", []) if str(value).strip()]
+        kpis = list(dict.fromkeys(kpis))
+        if not key:
+            continue
+        if key == "__all_kpis__":
+            default_group["kpis"] = kpis
+            continue
+        if not name:
             continue
         normalized.append({"key": key, "name": name, "kpis": kpis, "is_builtin": False})
     return normalized
@@ -1089,15 +1179,24 @@ def save_kpi_group(name: str, kpis: list[str], key: str | None = None) -> Path:
     if not normalized_name:
         raise ValueError("KPI 分组名称不能为空")
     normalized_key = (key or _slugify_file_stem(normalized_name, "kpi_group")).strip()
-    if normalized_key == "__all_kpis__":
-        raise ValueError("默认组不能被覆盖")
     payload = [group for group in load_kpi_groups() if not group.get("is_builtin")]
     payload = [group for group in payload if str(group.get("key")) != normalized_key]
+    if normalized_key == "__all_kpis__":
+        payload.insert(
+            0,
+            {
+                "key": normalized_key,
+                "name": _default_kpi_group()["name"],
+                "kpis": list(dict.fromkeys(str(item).strip() for item in kpis if str(item).strip())),
+            },
+        )
+        KPI_GROUPS_PATH.write_text(json.dumps({"groups": payload}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return KPI_GROUPS_PATH
     payload.append(
         {
             "key": normalized_key,
             "name": normalized_name,
-            "kpis": sorted({str(item).strip() for item in kpis if str(item).strip()}),
+            "kpis": list(dict.fromkeys(str(item).strip() for item in kpis if str(item).strip())),
         }
     )
     KPI_GROUPS_PATH.write_text(json.dumps({"groups": payload}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1121,6 +1220,47 @@ def _resolve_group_filter(group_key: str | None) -> set[str] | None:
         if str(group.get("key")) == group_key:
             return {str(item).strip() for item in group.get("kpis", []) if str(item).strip()}
     return set()
+
+
+def get_kpi_group_order(group_key: str | None) -> list[str] | None:
+    if not group_key:
+        group_key = "__all_kpis__"
+    for group in load_kpi_groups():
+        if str(group.get("key")) == group_key:
+            return [str(item).strip() for item in group.get("kpis", []) if str(item).strip()]
+    return None if group_key == "__all_kpis__" else []
+
+
+def get_interface_mapping_actual_name_column_count() -> int:
+    if not INTERFACE_MAPPING_PATH.exists():
+        return DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+    workbook = load_workbook(INTERFACE_MAPPING_PATH)
+    if INTERFACE_MAPPING_METADATA_SHEET in workbook.sheetnames:
+        metadata_sheet = workbook[INTERFACE_MAPPING_METADATA_SHEET]
+        for key, value, *_ in metadata_sheet.iter_rows(min_row=1, values_only=True):
+            if str(key or "").strip() == "actual_signal_name_column_count":
+                try:
+                    return max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(value or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+                except (TypeError, ValueError):
+                    break
+    max_count = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+    for sheet_name in [SYSTEM_MAPPING_SHEET, CUSTOM_MAPPING_SHEET]:
+        if sheet_name not in workbook.sheetnames:
+            continue
+        sheet = workbook[sheet_name]
+        header_row = [str(cell or "").strip().lower() for cell in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), [])]
+        actual_count = sum(1 for cell in header_row if cell.startswith("actual_signal_name_"))
+        if actual_count > DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT:
+            extra_column_start = (2 if sheet_name == SYSTEM_MAPPING_SHEET else 1) + DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+            has_legacy_extra_values = any(
+                str(cell or "").strip()
+                for row in sheet.iter_rows(min_row=2, values_only=True)
+                for cell in row[extra_column_start:]
+            )
+            if not has_legacy_extra_values:
+                actual_count = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+        max_count = max(max_count, actual_count)
+    return max_count
 
 
 def collect_kpi_raw_input_requirements(group_key: str | None = None) -> dict[str, list[str]]:
@@ -1207,7 +1347,8 @@ def list_required_raw_input_signals(group_key: str | None = None) -> list[str]:
     required_by = collect_kpi_raw_input_requirements(group_key)
     for signal_name, owners in collect_derived_signal_raw_input_requirements(resolve_required_derived_signal_names(group_key, strict=False)).items():
         required_by.setdefault(signal_name, []).extend(owners)
-    return sorted(required_by)
+    required_by.setdefault("time_s", [])
+    return _ordered_raw_input_names(list(required_by))
 
 
 def list_rule_spec_entries() -> list[dict[str, Any]]:
@@ -1322,6 +1463,7 @@ def _load_kpi_definitions_cached(
 ) -> list[dict[str, Any]]:
     definitions: list[dict[str, Any]] = []
     allowed_kpis = _resolve_group_filter(group_key)
+    group_order = get_kpi_group_order(group_key)
     for path in _iter_python_files(KPI_SPECS_DIR):
         module = _load_python_module(path, "kpi_defs")
         if _is_system_template_path(path):
@@ -1334,6 +1476,9 @@ def _load_kpi_definitions_cached(
         definition["module_path"] = str(path)
         definition["display_name"] = _compose_display_name(definition.get("name", ""), definition.get("title", ""), path.stem)
         definitions.append(definition)
+    if group_order is not None:
+        order_index = {name: index for index, name in enumerate(group_order)}
+        definitions.sort(key=lambda item: (order_index.get(str(item.get("name", "")), len(order_index)), str(item.get("name", ""))))
     return definitions
 
 
@@ -1350,6 +1495,7 @@ def _load_kpi_plugins_cached(
 ) -> list[dict[str, Any]]:
     plugins: list[dict[str, Any]] = []
     allowed_kpis = _resolve_group_filter(group_key)
+    group_order = get_kpi_group_order(group_key)
     for path in _iter_python_files(KPI_SPECS_DIR):
         module = _load_python_module(path, "kpi_plugins")
         if _is_system_template_path(path):
@@ -1371,6 +1517,9 @@ def _load_kpi_plugins_cached(
                 "path": path,
             }
         )
+    if group_order is not None:
+        order_index = {name: index for index, name in enumerate(group_order)}
+        plugins.sort(key=lambda item: (order_index.get(str(item.get("definition", {}).get("name", "")), len(order_index)), str(item.get("definition", {}).get("name", ""))))
     return plugins
 
 
@@ -1818,8 +1967,9 @@ def load_interface_signal_tables() -> dict[str, list[dict[str, Any]]]:
         if sheet is None:
             return rows
         header_row = [str(cell or "").strip().lower() for cell in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), [])]
-        has_from_column = sheet_name == SYSTEM_MAPPING_SHEET and len(header_row) > 1 and header_row[1] == "from"
-        actual_name_start = 2 if has_from_column else 1
+        has_description_column = sheet_name == SYSTEM_MAPPING_SHEET and len(header_row) > 1 and header_row[1] == "description"
+        has_from_column = sheet_name == SYSTEM_MAPPING_SHEET and ((len(header_row) > 2 and header_row[2] == "from") or (len(header_row) > 1 and header_row[1] == "from"))
+        actual_name_start = 3 if has_description_column and has_from_column else (2 if has_from_column else 1)
         for row in sheet.iter_rows(min_row=2, values_only=True):
             signal_name = str(row[0] or "").strip()
             if not signal_name:
@@ -1828,6 +1978,7 @@ def load_interface_signal_tables() -> dict[str, list[dict[str, Any]]]:
             rows.append(
                 {
                     "standard_signal": signal_name,
+                    "description": RAW_INPUT_DESCRIPTIONS.get(signal_name, str(row[1] or "").strip() if has_description_column else ""),
                     "actual_names": _normalize_actual_names(list(row[actual_name_start:])),
                     "required_by": reference.get("required_by", ["user_defined"] if sheet_name == CUSTOM_MAPPING_SHEET else []),
                     "source_sheet": sheet_name,
@@ -1864,22 +2015,27 @@ def _collect_runtime_raw_inputs() -> dict[str, list[str]]:
     required_by = collect_kpi_raw_input_requirements()
     for signal_name, owners in collect_derived_signal_raw_input_requirements().items():
         required_by.setdefault(signal_name, []).extend(owners)
+    required_by.setdefault("time_s", [])
     return required_by
 
 
-def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows: list[dict[str, Any]]) -> Path:
+def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows: list[dict[str, Any]], actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> Path:
     required_by = _collect_runtime_raw_inputs()
+    actual_name_column_count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
     workbook = Workbook()
     system_sheet = workbook.active
     system_sheet.title = SYSTEM_MAPPING_SHEET
     custom_sheet = workbook.create_sheet(CUSTOM_MAPPING_SHEET)
     guide_sheet = workbook.create_sheet(GUIDE_SHEET)
     reference_sheet = workbook.create_sheet(REFERENCE_SHEET)
+    metadata_sheet = workbook.create_sheet(INTERFACE_MAPPING_METADATA_SHEET)
+    metadata_sheet.sheet_state = "hidden"
+    metadata_sheet.append(["actual_signal_name_column_count", actual_name_column_count])
 
     guide_rows = [
         ["用途", "第一个 sheet 为系统自动维护的 KPI 与派生量 raw_inputs 信号，第二个 sheet 为用户自定义扩展信号。"],
-        ["编辑规则", f"{SYSTEM_MAPPING_SHEET} 的 A-B 列只读，C-G 列可编辑；{CUSTOM_MAPPING_SHEET} 的 A-F 列均可编辑。"],
-        ["匹配逻辑", "分析时只按 actual_signal_name_1 到 actual_signal_name_5 逐列匹配。系统信号的 From 列用于说明该 raw_inputs 名称被哪些 KPI / 派生量引用。"],
+        ["编辑规则", f"{SYSTEM_MAPPING_SHEET} 的 A-C 列只读，后续真实信号名列可编辑；{CUSTOM_MAPPING_SHEET} 的第一列和真实信号名列均可编辑。"],
+        ["匹配逻辑", "分析时会按 actual_signal_name_1 到当前最后一列依次匹配；单元格里既可以填实际信号名，也可以填公式表达式，例如 time_ms*0.001。系统信号的 Description 列自动展示物理意义与单位，From 列用于说明该 raw_inputs 名称被哪些 KPI / 派生量引用。"],
         ["绘图信号", "曲线页下拉菜单会读取前两个 sheet 的第一列，因此自定义信号可用于绘图。"],
         ["注意事项", "自定义信号不会自动参与规则分析，除非你在规则/KPI Python 文件中显式引用它。"],
     ]
@@ -1894,9 +2050,10 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
             signal_name = str(entry.get("standard_signal", "")).strip()
             if not signal_name:
                 continue
-            actual_names = _normalize_actual_names(list(entry.get("actual_names", [])))[:5]
+            actual_names = _normalize_actual_names(list(entry.get("actual_names", [])))[:actual_name_column_count]
             row = [signal_name]
-            if headers is SYSTEM_INTERFACE_MAPPING_HEADERS:
+            if headers[:3] == ["raw_input_name", "description", "from"]:
+                row.append(RAW_INPUT_DESCRIPTIONS.get(signal_name, str(entry.get("description", "")).strip() or "请补充该输入量的物理意义与单位说明。"))
                 row.append("\n".join(_format_required_by_owner(owner) for owner in entry.get("required_by", [])))
             row.extend(actual_names)
             while len(row) < len(headers):
@@ -1913,14 +2070,15 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
         _auto_fit_worksheet(sheet)
 
     normalized_system_rows = []
-    for signal_name in sorted(required_by):
+    for signal_name in _ordered_raw_input_names(list(required_by)):
         existing = next((row for row in system_rows if str(row.get("standard_signal", "")).strip() == signal_name), None)
         normalized_system_rows.append({
             "standard_signal": signal_name,
             "actual_names": [] if existing is None else existing.get("actual_names", []),
+            "description": RAW_INPUT_DESCRIPTIONS.get(signal_name, "请补充该输入量的物理意义与单位说明。"),
             "required_by": sorted(set(required_by.get(signal_name, []))),
         })
-    append_rows(system_sheet, normalized_system_rows, SYSTEM_INTERFACE_MAPPING_HEADERS, read_only_columns={0, 1})
+    append_rows(system_sheet, normalized_system_rows, build_system_interface_mapping_headers(actual_name_column_count), read_only_columns={0, 1, 2})
 
     filtered_custom_rows = []
     seen_custom: set[str] = set()
@@ -1930,10 +2088,10 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
             continue
         filtered_custom_rows.append({"standard_signal": signal_name, "actual_names": row.get("actual_names", [])})
         seen_custom.add(signal_name)
-    append_rows(custom_sheet, filtered_custom_rows, CUSTOM_INTERFACE_MAPPING_HEADERS, read_only_columns=set())
+    append_rows(custom_sheet, filtered_custom_rows, build_custom_interface_mapping_headers(actual_name_column_count), read_only_columns=set())
 
     reference_sheet.append(["raw_input_name", "from"])
-    for signal_name in sorted(required_by):
+    for signal_name in _ordered_raw_input_names(list(required_by)):
         reference_sheet.append([
             signal_name,
             " | ".join(sorted(set(required_by[signal_name]))),
@@ -1955,15 +2113,16 @@ def sync_interface_mapping_file() -> Path:
         if SYSTEM_MAPPING_SHEET in workbook.sheetnames and CUSTOM_MAPPING_SHEET in workbook.sheetnames:
             existing_tables = load_interface_signal_tables()
     existing_entries = _read_interface_mapping_workbook() if existing_tables is not None else _read_legacy_interface_mapping()
+    actual_name_column_count = get_interface_mapping_actual_name_column_count() if existing_tables is not None else DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
 
     system_rows = []
     required_by = _collect_runtime_raw_inputs()
-    for signal_name in sorted(required_by):
+    for signal_name in _ordered_raw_input_names(list(required_by)):
         existing = existing_entries.get(signal_name, {})
         system_rows.append({"standard_signal": signal_name, "actual_names": existing.get("actual_names", [])})
 
     custom_rows = [] if existing_tables is None else existing_tables.get("custom", [])
-    return save_interface_signal_tables(system_rows, custom_rows)
+    return save_interface_signal_tables(system_rows, custom_rows, actual_name_column_count=actual_name_column_count)
 
 
 def _read_interface_mapping_workbook() -> dict[str, dict[str, Any]]:

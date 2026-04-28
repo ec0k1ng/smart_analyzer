@@ -10,7 +10,7 @@ from tcs_smart_analyzer.ui.main_window import MainWindow
 
 def main() -> None:
     app = QApplication([])
-    save_kpi_group("冒烟分组", ["peak_slip_ratio"], key="smoke_group")
+    save_kpi_group("冒烟分组", ["max_slip_kph"], key="smoke_group")
     try:
         window = MainWindow()
         demo = Path(__file__).resolve().parents[1] / "sample_data" / "tcs_demo.csv"

@@ -1,5 +1,7 @@
 from tcs_smart_analyzer.config.analysis_settings import AnalysisSettings, load_analysis_settings
 from tcs_smart_analyzer.config.editable_configs import (
+	build_custom_interface_mapping_headers,
+	build_system_interface_mapping_headers,
 	create_derived_signal_draft_file,
 	create_derived_signal_spec_file,
 	align_python_config_file_name,
@@ -13,6 +15,7 @@ from tcs_smart_analyzer.config.editable_configs import (
 	extract_derived_signal_name_from_text,
 	extract_kpi_name_from_text,
 	get_config_file_paths,
+	get_interface_mapping_actual_name_column_count,
 	get_plot_signal_names,
 	list_derived_signal_spec_entries,
 	list_kpi_raw_input_signals,
@@ -49,6 +52,8 @@ from tcs_smart_analyzer.config.rule_settings import get_rule_threshold, get_rule
 __all__ = [
 	"AnalysisSettings",
 	"align_python_config_file_name",
+	"build_custom_interface_mapping_headers",
+	"build_system_interface_mapping_headers",
 	"create_derived_signal_draft_file",
 	"create_derived_signal_spec_file",
 	"create_kpi_draft_file",
@@ -61,6 +66,7 @@ __all__ = [
 	"extract_derived_signal_name_from_text",
 	"extract_kpi_name_from_text",
 	"get_config_file_paths",
+	"get_interface_mapping_actual_name_column_count",
 	"get_plot_signal_names",
 	"get_rule_threshold",
 	"get_rule_threshold_source",

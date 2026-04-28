@@ -41,11 +41,18 @@ class EditableConfigTests(unittest.TestCase):
         kpis = load_kpi_definitions()
         kpi_names = {item["name"] for item in kpis}
         derived_names = {item["name"] for item in load_derived_signal_definitions()}
-        baseline_kpis = {"max_jerk_mps3", "max_slip_speed", "mean_vehicle_speed_kph", "peak_slip_ratio"}
+        baseline_kpis = {
+            "max_jerk_mps3",
+            "max_slip_kph",
+            "mean_full_brake_decel_mps2",
+            "max_yaw_rate_degps",
+            "max_steer_angle_deg",
+            "mean_full_throttle_accel_mps2",
+        }
 
         self.assertEqual(len(rules), 0)
         self.assertTrue(baseline_kpis.issubset(kpi_names))
-        self.assertIn("slip_ratio", derived_names)
+        self.assertIn("slip_kph", derived_names)
 
     def test_rule_and_kpi_template_entries_are_first(self) -> None:
         rule_entries = list_rule_spec_entries()
@@ -58,8 +65,8 @@ class EditableConfigTests(unittest.TestCase):
         self.assertIn("示例", str(rule_entries[0]["display_name"]))
         self.assertIn("示例", str(kpi_entries[0]["display_name"]))
         self.assertIn("示例", str(derived_entries[0]["display_name"]))
-        self.assertTrue(any(entry["display_name"] == "peak_slip_ratio 峰值打滑率" for entry in kpi_entries))
-        self.assertTrue(any(entry["display_name"] == "slip_ratio 打滑率" for entry in derived_entries))
+        self.assertTrue(any(entry["display_name"] == "max_slip_kph 最大打滑量" for entry in kpi_entries))
+        self.assertTrue(any(entry["display_name"] == "slip_kph 打滑量" for entry in derived_entries))
 
     def test_formula_signal_config_file_is_available(self) -> None:
         definitions = load_formula_signal_definitions()
@@ -72,21 +79,24 @@ class EditableConfigTests(unittest.TestCase):
         custom_sheet = workbook["自定义信号"]
         reference_sheet = workbook["参考信息"]
         mapping_values = [mapping_sheet.cell(row=row_index, column=1).value for row_index in range(2, mapping_sheet.max_row + 1)]
-        mapping_sources = [str(mapping_sheet.cell(row=row_index, column=2).value or "") for row_index in range(2, mapping_sheet.max_row + 1)]
+        mapping_descriptions = [str(mapping_sheet.cell(row=row_index, column=2).value or "") for row_index in range(2, mapping_sheet.max_row + 1)]
+        mapping_sources = [str(mapping_sheet.cell(row=row_index, column=3).value or "") for row_index in range(2, mapping_sheet.max_row + 1)]
         reference_values = [reference_sheet.cell(row=row_index, column=1).value for row_index in range(2, reference_sheet.max_row + 1)]
 
-        self.assertIn("vehicle_speed", mapping_values)
+        self.assertIn("vehicle_speed_kph", mapping_values)
         self.assertIn("longitudinal_accel_mps2", mapping_values)
-        self.assertNotIn("brake_pressure_fl_bar", mapping_values)
-        self.assertNotIn("brake_pressure_fr_bar", mapping_values)
+        self.assertIn("brake_depth_pct", mapping_values)
         self.assertNotIn("torque_actual_nm", mapping_values)
-        self.assertIn("vehicle_speed", reference_values)
-        self.assertEqual(mapping_sheet.cell(row=1, column=2).value, "from")
+        self.assertIn("vehicle_speed_kph", reference_values)
+        self.assertEqual(mapping_values[0], "time_s")
+        self.assertEqual(mapping_sheet.cell(row=1, column=2).value, "description")
+        self.assertEqual(mapping_sheet.cell(row=1, column=3).value, "from")
         self.assertEqual(mapping_sheet.cell(row=1, column=1).value, "raw_input_name")
         self.assertEqual(reference_sheet.cell(row=1, column=1).value, "raw_input_name")
         self.assertEqual(reference_sheet.cell(row=1, column=2).value, "from")
+        self.assertTrue(any("单位" in value for value in mapping_descriptions))
         self.assertTrue(any("KPI:" in value or "派生量:" in value for value in mapping_sources))
-        self.assertEqual(custom_sheet.max_column, 6)
+        self.assertEqual(custom_sheet.max_column, 4)
         self.assertGreater(float(mapping_sheet.column_dimensions["A"].width), 10.0)
 
     def test_interface_mapping_file_removes_stale_system_signals(self) -> None:
@@ -108,15 +118,17 @@ class EditableConfigTests(unittest.TestCase):
 
         self.assertIn("system", tables)
         self.assertIn("custom", tables)
-        self.assertTrue(any(row["standard_signal"] == "vehicle_speed" for row in tables["system"]))
+        self.assertTrue(any(row["standard_signal"] == "vehicle_speed_kph" for row in tables["system"]))
         self.assertTrue(any(row["required_by"] for row in tables["system"]))
+        vehicle_speed_row = next(row for row in tables["system"] if row["standard_signal"] == "vehicle_speed_kph")
+        self.assertIn("单位", str(vehicle_speed_row.get("description", "")))
 
     def test_derived_signal_definitions_include_algorithm_summary(self) -> None:
         definitions = load_derived_signal_definitions()
-        slip_ratio = next(item for item in definitions if item["name"] == "slip_ratio")
+        slip_kph = next(item for item in definitions if item["name"] == "slip_kph")
 
-        self.assertIn("algorithm_summary", slip_ratio)
-        self.assertIn("vehicle_speed", str(slip_ratio["algorithm_summary"]))
+        self.assertIn("algorithm_summary", slip_kph)
+        self.assertIn("vehicle_speed_kph", str(slip_kph["algorithm_summary"]))
 
     def test_kpi_guide_lists_current_derived_signals(self) -> None:
         config_paths = get_config_file_paths()
@@ -124,18 +136,26 @@ class EditableConfigTests(unittest.TestCase):
         derived_guide_text = read_text_config_file(config_paths["derived_signals_dir"] / "00_example_and_guide.py")
 
         self.assertIn("当前可用派生量清单", guide_text)
-        self.assertIn("slip_ratio", guide_text)
+        self.assertIn("slip_kph", guide_text)
+        self.assertIn("打滑量", guide_text)
+        self.assertIn("当前接口映射表中的标准输入量", guide_text)
+        self.assertIn("vehicle_speed_kph", guide_text)
         self.assertIn("当前可用派生量清单", derived_guide_text)
-        self.assertIn("tcs_target_slip_ratio_global", derived_guide_text)
+        self.assertIn("tcs_target_slip_kph", derived_guide_text)
+        self.assertIn("TCS全局目标打滑量", derived_guide_text)
+        self.assertIn("当前接口映射表中的标准输入量", derived_guide_text)
         self.assertIn("算法概述", guide_text)
         self.assertIn("算法概述", derived_guide_text)
         self.assertIn("唯一需要维护的输入声明", guide_text)
         self.assertIn("raw_inputs 就是唯一需要维护的输入声明", derived_guide_text)
+        self.assertIn("标准输入名称应带单位", guide_text)
+        self.assertIn("标准输入名称应带单位", derived_guide_text)
         self.assertIn("派生量不需要 trend_source", derived_guide_text)
         self.assertIn("calculate_signal(dataframe) 的返回值本身就是曲线来源", derived_guide_text)
         self.assertIn("没有单独的 trend_source 字段", derived_guide_text)
         self.assertIn("DERIVED_SIGNAL_DEFINITION[\"name\"]", derived_guide_text)
         self.assertIn("calculate_kpi_series(dataframe)：必填字段", guide_text)
+        self.assertIn("algorithm_summary：必填字段", guide_text)
         self.assertIn("trend_source 不是可选项", guide_text)
         self.assertIn("必须使用英文", guide_text)
         self.assertIn("请使用中文", guide_text)
@@ -169,8 +189,8 @@ def calculate_kpi(dataframe):
 
     def test_python_config_validator_does_not_misreport_loop_local_names(self) -> None:
         config_paths = get_config_file_paths()
-        slip_ratio_path = config_paths["derived_signals_dir"] / "slip_ratio.py"
-        issues = validate_python_config_content(slip_ratio_path, read_text_config_file(slip_ratio_path))
+        slip_kph_path = config_paths["derived_signals_dir"] / "slip_kph.py"
+        issues = validate_python_config_content(slip_kph_path, read_text_config_file(slip_kph_path))
 
         self.assertEqual(issues, [])
 
@@ -222,7 +242,7 @@ IS_TEMPLATE = False
 KPI_DEFINITION = {
     "name": "temp_missing_dep_kpi",
     "title": "缺失依赖测试KPI",
-    "raw_inputs": ["vehicle_speed"],
+    "raw_inputs": ["vehicle_speed_kph"],
     "derived_inputs": ["missing_derived_signal_for_test"],
     "trend_source": "temp_missing_dep_kpi",
     "unit": "",
@@ -239,7 +259,7 @@ def calculate_kpi(dataframe):
     return 0.0
 
 def calculate_kpi_series(dataframe):
-    return dataframe["vehicle_speed"]
+    return dataframe["vehicle_speed_kph"]
 ''',
             encoding="utf-8",
         )
@@ -293,7 +313,7 @@ IS_TEMPLATE = False
 KPI_DEFINITION = {
     "name": "temp_runtime_kpi_name",
     "title": "临时运行时KPI",
-    "raw_inputs": ["time_s", "vehicle_speed"],
+    "raw_inputs": ["time_s", "vehicle_speed_kph"],
     "derived_inputs": [],
     "trend_source": "temp_runtime_kpi_name",
     "unit": "",
@@ -310,7 +330,7 @@ def calculate_kpi(dataframe):
     return 0.0
 
 def calculate_kpi_series(dataframe):
-    return dataframe["vehicle_speed"]
+    return dataframe["vehicle_speed_kph"]
 ''',
             encoding="utf-8",
         )
@@ -338,7 +358,7 @@ IS_TEMPLATE = True
 KPI_DEFINITION = {
     "name": "temp_flagged_kpi",
     "title": "临时测试KPI",
-    "raw_inputs": ["vehicle_speed"],
+    "raw_inputs": ["vehicle_speed_kph"],
     "derived_inputs": [],
     "trend_source": "temp_flagged_kpi",
     "unit": "unitless",
@@ -403,14 +423,14 @@ import pandas as pd
 DERIVED_SIGNAL_DEFINITION = {
     "name": "temp_runtime_signal_name",
     "title": "临时运行时派生量",
-    "raw_inputs": ["vehicle_speed"],
+    "raw_inputs": ["vehicle_speed_kph"],
     "derived_inputs": [],
     "description": "",
     "algorithm_summary": "",
 }
 
 def calculate_signal(dataframe):
-    return pd.to_numeric(dataframe["vehicle_speed"], errors="coerce")
+    return pd.to_numeric(dataframe["vehicle_speed_kph"], errors="coerce")
 ''',
             encoding="utf-8",
         )
@@ -429,26 +449,35 @@ def calculate_signal(dataframe):
 
     def test_renaming_derived_signal_updates_dependent_configs(self) -> None:
         config_paths = get_config_file_paths()
-        peak_path = config_paths["kpi_specs_dir"] / "peak_slip_ratio.py"
-        derived_path = config_paths["derived_signals_dir"] / "tcs_target_slip_ratio_global.py"
+        peak_path = config_paths["kpi_specs_dir"] / "tcs_ctrl_time_max_s.py"
+        max_slip_path = config_paths["kpi_specs_dir"] / "max_slip_kph.py"
+        abs_kpi_path = config_paths["kpi_specs_dir"] / "abs_ctrl_time_max_s.py"
+        derived_path = config_paths["derived_signals_dir"] / "tcs_target_slip_kph.py"
+        abs_derived_path = config_paths["derived_signals_dir"] / "abs_target_slip_kph.py"
         chart_state_path = config_paths["chart_view_state"]
         peak_backup = peak_path.read_text(encoding="utf-8")
+        max_slip_backup = max_slip_path.read_text(encoding="utf-8")
+        abs_kpi_backup = abs_kpi_path.read_text(encoding="utf-8")
         derived_backup = derived_path.read_text(encoding="utf-8")
+        abs_derived_backup = abs_derived_path.read_text(encoding="utf-8")
         chart_backup = chart_state_path.read_text(encoding="utf-8") if chart_state_path.exists() else None
 
         try:
-            save_chart_view_state({"active_sheet": 0, "sheets": [{"name": "工作表 1", "panels": [{"signals": ["slip_ratio", "vehicle_speed"]}]}]})
-            rename_derived_signal_references("slip_ratio", "slip_ratio_renamed")
+            save_chart_view_state({"active_sheet": 0, "sheets": [{"name": "工作表 1", "panels": [{"signals": ["slip_kph", "vehicle_speed"]}]}]})
+            rename_derived_signal_references("slip_kph", "slip_kph_renamed")
 
             peak_text = peak_path.read_text(encoding="utf-8")
             derived_text = derived_path.read_text(encoding="utf-8")
-            self.assertIn('"derived_inputs": ["slip_ratio_renamed"]', peak_text)
-            self.assertIn('"trend_source": "peak_slip_ratio"', peak_text)
-            self.assertIn('"derived_inputs": ["slip_ratio_renamed"]', derived_text)
-            self.assertEqual(load_chart_view_state()["sheets"][0]["panels"][0]["signals"], ["slip_ratio_renamed", "vehicle_speed"])
+            self.assertIn('"slip_kph_renamed"', peak_text)
+            self.assertIn('"trend_source": "tcs_ctrl_time_max_s"', peak_text)
+            self.assertIn('"slip_kph_renamed"', derived_text)
+            self.assertEqual(load_chart_view_state()["sheets"][0]["panels"][0]["signals"], ["slip_kph_renamed", "vehicle_speed"])
         finally:
             peak_path.write_text(peak_backup, encoding="utf-8")
+            max_slip_path.write_text(max_slip_backup, encoding="utf-8")
+            abs_kpi_path.write_text(abs_kpi_backup, encoding="utf-8")
             derived_path.write_text(derived_backup, encoding="utf-8")
+            abs_derived_path.write_text(abs_derived_backup, encoding="utf-8")
             if chart_backup is None:
                 if chart_state_path.exists():
                     chart_state_path.unlink()
@@ -463,13 +492,13 @@ def calculate_signal(dataframe):
             save_chart_view_state(
                 {
                     "active_sheet": 0,
-                    "sheets": [{"name": "总览", "panels": [{"signals": ["vehicle_speed", "slip_ratio"]}, {"signals": []}]}],
+                    "sheets": [{"name": "总览", "panels": [{"signals": ["vehicle_speed", "slip_kph"]}, {"signals": []}]}],
                 }
             )
             state = load_chart_view_state()
 
             self.assertEqual(state["sheets"][0]["name"], "总览")
-            self.assertEqual(state["sheets"][0]["panels"][0]["signals"], ["vehicle_speed", "slip_ratio"])
+            self.assertEqual(state["sheets"][0]["panels"][0]["signals"], ["vehicle_speed", "slip_kph"])
             self.assertEqual(state["sheets"][0]["panels"][1]["signals"], [])
         finally:
             if backup is not None:
@@ -489,14 +518,19 @@ def calculate_signal(dataframe):
         group_path = config_paths["kpi_groups"]
         backup = group_path.read_text(encoding="utf-8") if group_path.exists() else None
         try:
-            save_kpi_group("测试分组", ["peak_slip_ratio", "max_jerk_mps3"], key="test_group")
+            save_kpi_group("测试分组", ["max_slip_kph", "max_jerk_mps3"], key="test_group")
+            save_kpi_group("全部KPI", ["max_jerk_mps3", "max_slip_kph"], key="__all_kpis__")
             groups = load_kpi_groups()
 
             self.assertEqual(groups[0]["key"], "__all_kpis__")
+            self.assertEqual(groups[0]["kpis"][:2], ["max_jerk_mps3", "max_slip_kph"])
             self.assertTrue(any(group["key"] == "test_group" for group in groups))
 
             filtered = load_kpi_definitions("test_group")
-            self.assertEqual({item["name"] for item in filtered}, {"peak_slip_ratio", "max_jerk_mps3"})
+            self.assertEqual({item["name"] for item in filtered}, {"max_slip_kph", "max_jerk_mps3"})
+
+            default_filtered = load_kpi_definitions()
+            self.assertEqual([item["name"] for item in default_filtered[:2]], ["max_jerk_mps3", "max_slip_kph"])
 
             delete_kpi_group("test_group")
             self.assertFalse(any(group["key"] == "test_group" for group in load_kpi_groups()))

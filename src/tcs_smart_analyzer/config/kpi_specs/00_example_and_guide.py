@@ -5,15 +5,6 @@ GUIDE_TEXT = """KPI 示例与详细讲解
 2. 这不是实际执行 KPI，分析引擎会自动跳过该文件。
 3. 现在不再单独维护规则文件。每一项 KPI 自己同时定义“数值如何算”和“结果如何判定”。
 
-当前可用派生量清单：
-1. slip_ratio
-   描述：四轮最大打滑率，驱动打滑恒为正，制动打滑恒为负，自动适应前进/倒车工况。
-   算法概述：以|vehicle_speed|为参考（下限0.5 kph），计算各轮(wheel_speed - vehicle_speed) / |vehicle_speed|，并根据车速符号对结果取同号修正：当vehicle_speed<0时，结果乘以-1，确保驱动打滑始终为正，制动打滑始终为负。取四轮绝对值最大值后还原符号。
-
-2. tcs_target_slip_ratio_global
-   描述：整个数据文件中所有TCS激活期间的时间加权平均打滑率，作为该数据文件的固有属性。全时段以恒定直线显示，供KPI作为稳定目标。
-   算法概述：以四个TCS激活标志的逻辑或确定激活区间；收集所有激活区间内的 slip_ratio 与时间差，计算全局时间加权平均值；返回一个与数据等长的序列，每个元素均为该全局平均值。若缺失必要信号则返回全NaN。
-
 给 AI 的格式化要求：
 请为 TCS Smart Analyzer 生成一个 KPI Python 文件，严格按下面格式输出，不要解释：
 
@@ -22,13 +13,17 @@ from __future__ import annotations
 IS_TEMPLATE = False
 
 KPI_DEFINITION = {
-    "name": "唯一KPI名称，例如 peak_slip_ratio。必须使用英文，因为它会作为KPI信号名参与依赖、绘图和结果索引",
+    "name": "唯一KPI名称，例如 max_slip_kph。必须使用英文，因为它会作为KPI信号名参与依赖、绘图和结果索引",
     "title": "KPI标题。请使用中文，供界面标签、结果表和报告展示",
-    "raw_inputs": ["这里列出 KPI 自己直接依赖的标准输入信号名"],
-    "derived_inputs": ["如果依赖派生量，在这里列出，例如 slip_ratio"],
-    "trend_source": "必须与 name 完全一致，例如 peak_slip_ratio。曲线界面的 KPI 信号只认 KPI 自己的 name",
+    "raw_inputs": [
+        "time_s",  # 示例：时间轴，单位 s
+        "vehicle_speed_kph",  # 示例：车速，单位 kph
+    ],
+    "derived_inputs": ["如果依赖派生量，在这里列出，例如 slip_kph"],
+    "trend_source": "必须与 name 完全一致，例如 max_slip_kph。曲线界面的 KPI 信号只认 KPI 自己的 name",
     "unit": "单位",
     "description": "说明这个 KPI 算出来代表什么",
+    "algorithm_summary": "用文字概述算法思路、关键公式和边界处理方式",
     "threshold": 0.0,
     "source": "阈值来源说明",
     "pass_condition": "value <= threshold",
@@ -49,8 +44,11 @@ def calculate_kpi_series(dataframe):
 
 说明：
 - 对用户来说，raw_inputs 是唯一需要维护的输入声明；接口映射表第一列会自动由所有 KPI 和派生量的 raw_inputs 汇总同步，不需要再额外维护另一份“必需信号清单”。
+- raw_inputs 里的标准输入名称应带单位，例如 vehicle_speed_kph、wheel_speed_fl_kph、yaw_rate_degps。
+- raw_inputs 建议逐行书写并在右侧补注释，明确物理意义与单位。
 - calculate_kpi(dataframe)：功能实现字段，负责用 Python 算出 KPI 数值。
 - calculate_kpi_series(dataframe)：必填字段，必须返回与数据长度一致的连续过程曲线，供曲线界面实时检查 KPI 算法过程和峰值位置。
+- algorithm_summary：必填字段，用一句到几句中文讲清楚算法核心逻辑、关键公式和边界处理。
 - 不要输出 DISPLAY_NAME，也不要把用户新建 KPI 文件写成 IS_TEMPLATE = True；这两个字段只属于系统示例文件，不属于实际 KPI 定义。
 - 如果多个 KPI 共用同一个中间量，应优先把它抽成派生量，并在 derived_inputs 中显式声明依赖。
 - 如果某个中间量只被当前 KPI 使用，也可以继续直接写在 KPI 文件内，保持算法透明可改。
@@ -69,7 +67,34 @@ def calculate_kpi_series(dataframe):
 - dataframe.attrs["mapped_columns"]：标准信号到实际信号名的映射字典。
 - 若你要让 AI 同时设计 KPI 与报告模板，还要明确告诉它：报告模板阶段可额外使用 report_title、metadata、kpis、rules、results、files、file_count 等变量。
 - raw_inputs 会自动进入接口映射 Excel 第一列来源统计，所以一定要写全。
+- 当前清单中的每一行都已压缩展示；连字符后面的说明优先取算法概述，没有算法概述时才回退到 description。
 - derived_inputs 不会直接参与接口映射，但它引用的派生量 raw_inputs 也会自动进入接口映射来源统计。
+
+当前可用派生量清单：
+1. abs_target_slip_kph - ABS全局目标打滑量 - 对所有 ABS 激活区间内的 -|slip_kph| 按时间差做加权平均，输出负值目标打滑量标量。
+2. slip_kph - 打滑量 - 按车速符号统一前进/倒车工况，对每个车轮计算 (wheel_speed_kph - vehicle_speed_kph) * sign(vehicle_speed_kph)，再按每个时刻绝对值最大的车轮输出该车轮打滑量。
+3. tcs_target_slip_kph - TCS全局目标打滑量 - 对所有 TCS 激活区间内的 |slip_kph| 按时间差做加权平均，输出单个目标打滑量标量。
+
+当前接口映射表中的标准输入量：
+1. time_s - 时间轴，单位 s，必须配置且固定排在第一行。
+2. abs_active_fl - 左前轮 ABS 激活标志，布尔/0-1。
+3. abs_active_fr - 右前轮 ABS 激活标志，布尔/0-1。
+4. abs_active_rl - 左后轮 ABS 激活标志，布尔/0-1。
+5. abs_active_rr - 右后轮 ABS 激活标志，布尔/0-1。
+6. accel_pedal_pct - 油门开度，单位 %。
+7. brake_depth_pct - 制动深度，单位 %。
+8. longitudinal_accel_mps2 - 纵向加速度，单位 m/s^2。
+9. steering_wheel_angle_deg - 方向盘转角，单位 deg。
+10. tcs_active_fl - 左前轮 TCS 激活标志，布尔/0-1。
+11. tcs_active_fr - 右前轮 TCS 激活标志，布尔/0-1。
+12. tcs_active_rl - 左后轮 TCS 激活标志，布尔/0-1。
+13. tcs_active_rr - 右后轮 TCS 激活标志，布尔/0-1。
+14. vehicle_speed_kph - 车速，单位 kph。
+15. wheel_speed_fl_kph - 左前轮轮速，单位 kph。
+16. wheel_speed_fr_kph - 右前轮轮速，单位 kph。
+17. wheel_speed_rl_kph - 左后轮轮速，单位 kph。
+18. wheel_speed_rr_kph - 右后轮轮速，单位 kph。
+19. yaw_rate_degps - 横摆角速度，单位 deg/s。
 """
 
 IS_TEMPLATE = True

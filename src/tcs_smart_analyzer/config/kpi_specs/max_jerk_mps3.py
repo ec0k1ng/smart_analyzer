@@ -15,11 +15,15 @@ except ImportError:
 KPI_DEFINITION = {
     "name": "max_jerk_mps3",
     "title": "最大纵向冲击度",
-    "raw_inputs": ["time_s", "longitudinal_accel_mps2"],
+    "raw_inputs": [
+        "time_s",  # 时间轴，单位 s
+        "longitudinal_accel_mps2",  # 纵向加速度，单位 m/s^2
+    ],
     "derived_inputs": [],
     "trend_source": "max_jerk_mps3",
     "unit": "m/s^3",
     "description": "全程最大纵向冲击度（可选滤波后）",
+    "algorithm_summary": "对纵向加速度按时间排序并按需低通滤波，再用相邻样本的加速度差分除以时间差计算 jerk，最后取绝对值最大值；趋势输出为累计最大值。",
     "threshold": 8.0,
     "source": "migrated_from_stb_001",
     "pass_condition": "value <= threshold",

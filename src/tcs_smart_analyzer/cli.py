@@ -87,9 +87,8 @@ def main() -> None:
                     "pass_count": 0,
                     "warning_count": 0,
                     "fail_count": 0,
-                    "peak_slip_ratio": 0.0,
+                    "max_slip_kph": 0.0,
                     "max_jerk_mps3": 0.0,
-                    "mean_vehicle_speed_kph": 0.0,
                     "error_message": str(exc),
                 }
             )

@@ -56,6 +56,8 @@ from PySide6.QtWidgets import (
 
 from tcs_smart_analyzer.config import (
     align_python_config_file_name,
+    build_custom_interface_mapping_headers,
+    build_system_interface_mapping_headers,
     create_derived_signal_draft_file,
     create_kpi_draft_file,
     create_report_template_file,
@@ -65,6 +67,7 @@ from tcs_smart_analyzer.config import (
     extract_derived_signal_name_from_text,
     extract_kpi_name_from_text,
     get_plot_signal_names,
+    get_interface_mapping_actual_name_column_count,
     list_derived_signal_spec_entries,
     list_kpi_spec_entries,
     load_chart_view_state,
@@ -101,23 +104,7 @@ RESULT_ROW_PATH_ROLE = Qt.ItemDataRole.UserRole + 21
 PROTECTED_DERIVED_FILES = {"00_example_and_guide.py"}
 PROTECTED_KPI_FILES = {"00_example_and_guide.py"}
 PROTECTED_TEMPLATE_FILES = {"00_example_and_guide.html"}
-SYSTEM_MAPPING_HEADERS = [
-    "raw_input_name",
-    "from",
-    "actual_signal_name_1",
-    "actual_signal_name_2",
-    "actual_signal_name_3",
-    "actual_signal_name_4",
-    "actual_signal_name_5",
-]
-CUSTOM_MAPPING_HEADERS = [
-    "raw_input_name",
-    "actual_signal_name_1",
-    "actual_signal_name_2",
-    "actual_signal_name_3",
-    "actual_signal_name_4",
-    "actual_signal_name_5",
-]
+
 APP_STYLE = """
 * {
     font-family: "Microsoft YaHei UI", "Segoe UI", "Helvetica Neue", sans-serif;
@@ -414,6 +401,23 @@ class DraggableSignalListWidget(QListWidget):
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.exec(Qt.DropAction.CopyAction)
+
+
+class KpiGroupListWidget(QListWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._reorder_callback = None
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+    def set_reorder_callback(self, callback) -> None:
+        self._reorder_callback = callback
+
+    def dropEvent(self, event) -> None:  # noqa: ANN001
+        super().dropEvent(event)
+        if callable(self._reorder_callback):
+            self._reorder_callback()
 
 
 class FormulaSignalListWidget(DraggableSignalListWidget):
@@ -1274,6 +1278,33 @@ class InteractiveChartView(QChartView):
             return None
         return plot_area
 
+    def _axis_x_to_pixel(self, axis_value: float) -> float | None:
+        plot_area = self._plot_area_rect()
+        axis_x, _axis_y = self._get_axes()
+        if plot_area is None or axis_x is None:
+            return None
+        lower = float(axis_x.min())
+        upper = float(axis_x.max())
+        span = upper - lower
+        if span <= 0:
+            return None
+        ratio = (float(axis_value) - lower) / span
+        return float(plot_area.left()) + ratio * float(plot_area.width())
+
+    def _pixel_to_axis_x(self, pixel_x: float) -> float | None:
+        plot_area = self._plot_area_rect()
+        axis_x, _axis_y = self._get_axes()
+        if plot_area is None or axis_x is None:
+            return None
+        width = float(plot_area.width())
+        if width <= 0:
+            return None
+        clamped_x = min(max(float(pixel_x), float(plot_area.left())), float(plot_area.right()))
+        ratio = (clamped_x - float(plot_area.left())) / width
+        lower = float(axis_x.min())
+        upper = float(axis_x.max())
+        return lower + ratio * (upper - lower)
+
     def _update_selection_band(self, current_pos: QPoint) -> None:
         plot_area = self._plot_area_rect()
         if self._right_drag_origin is None or plot_area is None:
@@ -1298,9 +1329,10 @@ class InteractiveChartView(QChartView):
         right = min(plot_area.right(), max(self._right_drag_origin.x(), end_pos.x()))
         if right - left < 6:
             return
-        center_y = plot_area.center().y()
-        left_value = chart.mapToValue(QPointF(float(left), float(center_y))).x()
-        right_value = chart.mapToValue(QPointF(float(right), float(center_y))).x()
+        left_value = self._pixel_to_axis_x(float(left))
+        right_value = self._pixel_to_axis_x(float(right))
+        if left_value is None or right_value is None:
+            return
         lower = float(min(left_value, right_value))
         upper = float(max(left_value, right_value))
         if upper <= lower:
@@ -1332,10 +1364,9 @@ class InteractiveChartView(QChartView):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._dragging_cursor_index is not None and self.chart() is not None:
-            plot_area = self.chart().plotArea()
-            clamped_x = min(max(float(event.position().x()), float(plot_area.left())), float(plot_area.right()))
-            chart_point = self.chart().mapToValue(QPointF(clamped_x, event.position().y()))
-            self._cursor_move_callback(self._dragging_cursor_index, float(chart_point.x()))
+            axis_value = self._pixel_to_axis_x(float(event.position().x()))
+            if axis_value is not None:
+                self._cursor_move_callback(self._dragging_cursor_index, float(axis_value))
             event.accept()
             return
         if self._last_pan_position is not None and self.chart() is not None:
@@ -1401,6 +1432,17 @@ class InteractiveChartView(QChartView):
             chart.setPlotArea(QRectF())
         self._refresh_cursor_labels()
 
+    def reset_interaction_state(self) -> None:
+        self._last_pan_position = None
+        self._right_drag_origin = None
+        self._dragging_cursor_index = None
+        self._selection_band.hide()
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        chart = self.chart()
+        if chart is not None:
+            chart.setPlotArea(QRectF())
+        self._refresh_cursor_labels()
+
     def dragEnterEvent(self, event) -> None:  # noqa: ANN001
         signal_names, _source_panel_id = _parse_signal_drag_payload(event.mimeData())
         if signal_names:
@@ -1425,17 +1467,20 @@ class InteractiveChartView(QChartView):
 
     def _hit_test_cursor(self, position) -> int | None:  # noqa: ANN001
         axis_x, _axis_y = self._get_axes()
-        chart = self.chart()
-        if chart is None or axis_x is None or self.cursor_mode == 0:
+        if axis_x is None or self.cursor_mode == 0:
             return None
-        plot_area = chart.plotArea()
+        plot_area = self._plot_area_rect()
+        if plot_area is None:
+            return None
         if position.x() < plot_area.left() - 8 or position.x() > plot_area.right() + 8:
             return None
         for cursor_index in range(self.cursor_mode):
             cursor_x = self.cursor_positions[cursor_index]
             if cursor_x is None:
                 continue
-            x_pos = chart.mapToPosition(QPointF(cursor_x, axis_x.min())).x()
+            x_pos = self._axis_x_to_pixel(float(cursor_x))
+            if x_pos is None:
+                continue
             if abs(position.x() - x_pos) <= 8:
                 return cursor_index
         return None
@@ -2086,10 +2131,11 @@ class MainWindow(QMainWindow):
         self.kpi_group_name_edit = QLineEdit()
         self.kpi_group_name_edit.setPlaceholderText("分组名称")
         self.kpi_group_name_edit.editingFinished.connect(self.on_kpi_group_name_editing_finished)
-        self.kpi_group_kpi_list = QListWidget()
+        self.kpi_group_kpi_list = KpiGroupListWidget()
+        self.kpi_group_kpi_list.set_reorder_callback(self.on_kpi_group_items_reordered)
         self.kpi_group_kpi_list.itemChanged.connect(self.on_kpi_group_item_changed)
         self.kpi_group_kpi_list.itemDoubleClicked.connect(self.open_kpi_from_group_item)
-        self.kpi_group_notice = QLabel("勾选组内需要参与分析的 KPI。默认组展示全部 KPI，只读。")
+        self.kpi_group_notice = QLabel("勾选组内需要参与分析的 KPI。自定义分组支持拖拽调整顺序，结果页和报告会按这里的顺序输出。默认组只读。")
         self.kpi_group_notice.setStyleSheet("color: #58708b;")
         layout.addLayout(toolbar)
         layout.addWidget(self.kpi_group_name_edit)
@@ -2218,20 +2264,25 @@ class MainWindow(QMainWindow):
         add_custom_button.clicked.connect(self.add_custom_mapping_row)
         delete_custom_button = self._make_button("删除自定义信号", QStyle.StandardPixmap.SP_TrashIcon)
         delete_custom_button.clicked.connect(self.delete_selected_custom_mapping_row)
-        for button in [add_custom_button, delete_custom_button]:
+        add_actual_name_column_button = self._make_button("新增真实信号名列", QStyle.StandardPixmap.SP_ArrowRight)
+        add_actual_name_column_button.clicked.connect(self.add_mapping_actual_name_column)
+        remove_actual_name_column_button = self._make_button("删除真实信号名列", QStyle.StandardPixmap.SP_ArrowLeft)
+        remove_actual_name_column_button.clicked.connect(self.remove_mapping_actual_name_column)
+        for button in [add_custom_button, delete_custom_button, add_actual_name_column_button, remove_actual_name_column_button]:
             toolbar.addWidget(button)
         toolbar.addStretch(1)
         self.mapping_tabs = QTabWidget()
-        self.system_mapping_table = MappingEditorTable(read_only_columns={0, 1})
-        self.system_mapping_table.setColumnCount(len(SYSTEM_MAPPING_HEADERS))
-        self.system_mapping_table.setHorizontalHeaderLabels(SYSTEM_MAPPING_HEADERS)
+        self._mapping_actual_name_column_count = get_interface_mapping_actual_name_column_count()
+        self.system_mapping_table = MappingEditorTable(read_only_columns={0, 1, 2})
+        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(self._mapping_actual_name_column_count)))
+        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(self._mapping_actual_name_column_count))
         self._configure_mapping_table(self.system_mapping_table)
         self.system_mapping_table._after_paste_callback = self._refresh_and_schedule_mapping_persist
         self.system_mapping_table.cellChanged.connect(self._on_mapping_table_changed)
         self.system_mapping_table.cellDoubleClicked.connect(self.open_mapping_source_from_cell)
         self.custom_mapping_table = MappingEditorTable(read_only_columns=set())
-        self.custom_mapping_table.setColumnCount(len(CUSTOM_MAPPING_HEADERS))
-        self.custom_mapping_table.setHorizontalHeaderLabels(CUSTOM_MAPPING_HEADERS)
+        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(self._mapping_actual_name_column_count)))
+        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(self._mapping_actual_name_column_count))
         self._configure_mapping_table(self.custom_mapping_table)
         self.custom_mapping_table._after_paste_callback = self._refresh_and_schedule_mapping_persist
         self.custom_mapping_table.cellChanged.connect(self._on_mapping_table_changed)
@@ -2297,6 +2348,16 @@ class MainWindow(QMainWindow):
         new_owner = self._editor_owner_for_widget(new)
         if old_owner is not None and old_owner != new_owner:
             self._clear_editor_transient_highlights()
+
+    def _refresh_charts_for_window_geometry_change(self) -> None:
+        if self.tabs.currentIndex() != 2 or not self.chart_panels:
+            return
+        self._reset_chart_interaction_state()
+        QTimer.singleShot(0, self.refresh_chart_panels)
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001,N802
+        super().resizeEvent(event)
+        self._refresh_charts_for_window_geometry_change()
 
     def open_current_find_panel(self) -> None:
         if self.tabs.currentIndex() != 3:
@@ -2490,15 +2551,17 @@ class MainWindow(QMainWindow):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         if table is self.system_mapping_table:
-            for index in range(len(SYSTEM_MAPPING_HEADERS)):
+            for index in range(table.columnCount()):
                 if index == 0:
                     header.resizeSection(index, 180)
                 elif index == 1:
+                    header.resizeSection(index, 240)
+                elif index == 2:
                     header.resizeSection(index, 320)
                 else:
                     header.resizeSection(index, 220)
             return
-        for index in range(len(CUSTOM_MAPPING_HEADERS)):
+        for index in range(table.columnCount()):
             header.resizeSection(index, 180 if index == 0 else 220)
 
     def choose_output_dir(self) -> None:
@@ -2687,18 +2750,37 @@ class MainWindow(QMainWindow):
             return
         self._loading_kpi_group = True
         self.kpi_group_name_edit.setText(str(selected_group.get("name", "")))
-        selected_kpis = {str(item) for item in selected_group.get("kpis", [])}
+        selected_kpi_order = [str(item) for item in selected_group.get("kpis", []) if str(item).strip()]
+        selected_kpis = set(selected_kpi_order)
         is_builtin = bool(selected_group.get("is_builtin"))
+        self._reorder_kpi_group_items(selected_kpi_order)
+        allow_reorder = group_key == "__all_kpis__" or not is_builtin
         for row_index in range(self.kpi_group_kpi_list.count()):
             item = self.kpi_group_kpi_list.item(row_index)
             item.setCheckState(Qt.CheckState.Checked if item.data(Qt.ItemDataRole.UserRole) in selected_kpis or is_builtin else Qt.CheckState.Unchecked)
             flags = item.flags() | Qt.ItemFlag.ItemIsEnabled
             if is_builtin:
-                item.setFlags(flags & ~Qt.ItemFlag.ItemIsUserCheckable)
+                item.setFlags((flags & ~Qt.ItemFlag.ItemIsUserCheckable) | (Qt.ItemFlag.ItemIsDragEnabled if allow_reorder else Qt.ItemFlag.NoItemFlags))
             else:
-                item.setFlags(flags | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setFlags(flags | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsDragEnabled)
         self.kpi_group_name_edit.setReadOnly(is_builtin)
         self._loading_kpi_group = False
+
+    def _reorder_kpi_group_items(self, ordered_names: list[str]) -> None:
+        if not ordered_names:
+            return
+        items: list[QListWidgetItem] = []
+        while self.kpi_group_kpi_list.count() > 0:
+            items.append(self.kpi_group_kpi_list.takeItem(0))
+        item_lookup = {str(item.data(Qt.ItemDataRole.UserRole)): item for item in items}
+        reordered: list[QListWidgetItem] = []
+        for name in ordered_names:
+            item = item_lookup.pop(name, None)
+            if item is not None:
+                reordered.append(item)
+        reordered.extend(item_lookup.values())
+        for item in reordered:
+            self.kpi_group_kpi_list.addItem(item)
 
     def create_kpi_group(self) -> None:
         name, ok = QInputDialog.getText(self, "新增 KPI 分组", "请输入分组名称")
@@ -2716,15 +2798,13 @@ class MainWindow(QMainWindow):
         if self._loading_kpi_group:
             return
         group_key = str(self.kpi_group_editor_combo.currentData() or "__all_kpis__")
-        if group_key == "__all_kpis__":
-            return
-        name = self.kpi_group_name_edit.text().strip()
+        name = self.kpi_group_name_edit.text().strip() or self._group_name(group_key)
         if not name:
             return
         selected_kpis: list[str] = []
         for row_index in range(self.kpi_group_kpi_list.count()):
             item = self.kpi_group_kpi_list.item(row_index)
-            if item.checkState() == Qt.CheckState.Checked:
+            if group_key == "__all_kpis__" or item.checkState() == Qt.CheckState.Checked:
                 selected_kpis.append(str(item.data(Qt.ItemDataRole.UserRole)))
         save_kpi_group(name, selected_kpis, key=group_key)
         current_queue_group = str(self.queue_group_combo.currentData() or "__all_kpis__")
@@ -2736,6 +2816,9 @@ class MainWindow(QMainWindow):
             self.log("success", f"KPI 分组已保存: {name}")
 
     def on_kpi_group_item_changed(self, _item: QListWidgetItem) -> None:
+        self._persist_current_kpi_group(log_message=False)
+
+    def on_kpi_group_items_reordered(self) -> None:
         self._persist_current_kpi_group(log_message=False)
 
     def on_kpi_group_name_editing_finished(self) -> None:
@@ -3353,6 +3436,17 @@ class MainWindow(QMainWindow):
             self._chart_layout_refresh_timer.stop()
         self._chart_layout_refresh_timer.start(interval_ms)
 
+    def _reset_chart_interaction_state(self) -> None:
+        if self._chart_layout_refresh_timer.isActive():
+            self._chart_layout_refresh_timer.stop()
+        for panel in self.chart_panels:
+            frame: ChartPanelFrame | None = panel.get("frame")
+            if frame is None:
+                continue
+            frame.view.reset_interaction_state()
+        self._refresh_chart_cursor_overlay()
+        self._schedule_chart_layout_refresh(0)
+
     def _signal_table_width_for_active_sheet(self) -> int:
         return int(self._active_chart_sheet().get("signal_table_width", 220) or 220)
 
@@ -3712,7 +3806,7 @@ class MainWindow(QMainWindow):
         if not visible_views:
             self.chart_cursor_overlay.set_cursor_lines([])
             return
-        first_view, first_chart, first_axis_y, first_plot_area = visible_views[0]
+        first_view, _first_chart, _first_axis_y, first_plot_area = visible_views[0]
         last_view, _last_chart, _last_axis_y, last_plot_area = visible_views[-1]
         top = float(first_view.viewport().mapTo(self.chart_overlay_host, QPoint(0, int(round(first_plot_area.top())))).y())
         bottom = float(last_view.viewport().mapTo(self.chart_overlay_host, QPoint(0, int(round(last_plot_area.bottom())))).y())
@@ -3721,11 +3815,13 @@ class MainWindow(QMainWindow):
             cursor_x = self.cursor_positions[cursor_index]
             if cursor_x is None:
                 continue
-            point = first_chart.mapToPosition(QPointF(float(cursor_x), first_axis_y.min()))
+            point_x = first_view._axis_x_to_pixel(float(cursor_x))
+            if point_x is None:
+                continue
             overlay_x = float(
                 first_view.viewport().mapTo(
                     self.chart_overlay_host,
-                    QPoint(int(round(point.x())), int(round(first_plot_area.top()))),
+                    QPoint(int(round(point_x)), int(round(first_plot_area.top()))),
                 ).x()
             )
             left_limit = float(first_view.viewport().mapTo(self.chart_overlay_host, QPoint(int(round(first_plot_area.left())), 0)).x())
@@ -4003,6 +4099,11 @@ class MainWindow(QMainWindow):
                 self._schedule_chart_layout_refresh(80)
         return super().eventFilter(watched, event)
 
+    def changeEvent(self, event) -> None:  # noqa: ANN001,N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._refresh_charts_for_window_geometry_change()
+
     def create_formula_signal(self) -> None:
         dialog = FormulaSignalDialog(self._signal_browser_all, self, title="新增自定义信号")
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -4155,7 +4256,7 @@ class MainWindow(QMainWindow):
         self._open_kpi_editor_by_name(str(item.data(Qt.ItemDataRole.UserRole) or "").strip())
 
     def open_mapping_source_from_cell(self, row: int, column: int) -> None:
-        if column != 1:
+        if column != 2:
             return
         item = self.system_mapping_table.item(row, column)
         signal_item = self.system_mapping_table.item(row, 0)
@@ -4508,9 +4609,45 @@ class MainWindow(QMainWindow):
 
     def load_mapping_editor(self) -> None:
         tables = load_interface_signal_tables()
+        system_actual_columns = max(3, max((len(list(row.get("actual_names", []))) for row in tables.get("system", [])), default=0))
+        custom_actual_columns = max(3, max((len(list(row.get("actual_names", []))) for row in tables.get("custom", [])), default=0))
+        self._mapping_actual_name_column_count = max(self._mapping_actual_name_column_count, system_actual_columns, custom_actual_columns)
+        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count, persist=False)
         self._populate_mapping_table(self.system_mapping_table, tables.get("system", []), False)
         self._populate_mapping_table(self.custom_mapping_table, tables.get("custom", []), True)
         self._refresh_mapping_validation()
+
+    def _set_mapping_actual_name_column_count(self, count: int, persist: bool = True) -> None:
+        target_count = max(3, int(count or 3))
+        if getattr(self, "_mapping_actual_name_column_count", 3) == target_count and self.system_mapping_table.columnCount() == len(build_system_interface_mapping_headers(target_count)):
+            return
+        system_rows = self._extract_mapping_rows(self.system_mapping_table) if self.system_mapping_table.rowCount() else []
+        custom_rows = self._extract_mapping_rows(self.custom_mapping_table) if self.custom_mapping_table.rowCount() else []
+        self._mapping_actual_name_column_count = target_count
+        self.system_mapping_table.blockSignals(True)
+        self.custom_mapping_table.blockSignals(True)
+        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(target_count)))
+        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(target_count))
+        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(target_count)))
+        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(target_count))
+        self.system_mapping_table.blockSignals(False)
+        self.custom_mapping_table.blockSignals(False)
+        self._configure_mapping_table(self.system_mapping_table)
+        self._configure_mapping_table(self.custom_mapping_table)
+        if system_rows:
+            self._populate_mapping_table(self.system_mapping_table, system_rows, False)
+        if custom_rows:
+            self._populate_mapping_table(self.custom_mapping_table, custom_rows, True)
+        if persist:
+            self._refresh_and_schedule_mapping_persist()
+
+    def add_mapping_actual_name_column(self) -> None:
+        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count + 1)
+
+    def remove_mapping_actual_name_column(self) -> None:
+        if self._mapping_actual_name_column_count <= 3:
+            return
+        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count - 1)
 
     def _refresh_and_schedule_mapping_persist(self) -> None:
         self._refresh_mapping_validation()
@@ -4521,9 +4658,10 @@ class MainWindow(QMainWindow):
         table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             is_system_table = table is self.system_mapping_table
-            actual_names = list(row.get("actual_names", []))[:5]
+            actual_names = list(row.get("actual_names", []))[: self._mapping_actual_name_column_count]
             values = [str(row.get("standard_signal", ""))]
             if is_system_table:
+                values.append(str(row.get("description", "")))
                 values.append("\n".join(self._format_requirement_owner(owner) for owner in row.get("required_by", [])))
             values.extend(actual_names)
             while len(values) < table.columnCount():
@@ -4532,10 +4670,11 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(str(value))
                 if column_index == 0 and not first_column_editable:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                if is_system_table and column_index == 1:
+                if is_system_table and column_index in {1, 2}:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    item.setData(Qt.ItemDataRole.UserRole, list(row.get("required_by", [])))
-                    item.setToolTip("双击跳转到来源定义\n" + "\n".join(self._format_requirement_owner(owner) for owner in row.get("required_by", [])))
+                    if column_index == 2:
+                        item.setData(Qt.ItemDataRole.UserRole, list(row.get("required_by", [])))
+                        item.setToolTip("双击跳转到来源定义\n" + "\n".join(self._format_requirement_owner(owner) for owner in row.get("required_by", [])))
                 table.setItem(row_index, column_index, item)
             if is_system_table:
                 owner_count = max(1, len(row.get("required_by", [])))
@@ -4547,7 +4686,8 @@ class MainWindow(QMainWindow):
 
     def _extract_mapping_rows(self, table: QTableWidget) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
-        actual_name_start = 2 if table is self.system_mapping_table else 1
+        is_system_table = table is self.system_mapping_table
+        actual_name_start = 3 if is_system_table else 1
         for row_index in range(table.rowCount()):
             signal_name = (table.item(row_index, 0).text() if table.item(row_index, 0) is not None else "").strip()
             actual_names = []
@@ -4557,7 +4697,18 @@ class MainWindow(QMainWindow):
                 if value:
                     actual_names.append(value)
             if signal_name:
-                rows.append({"standard_signal": signal_name, "actual_names": actual_names})
+                row: dict[str, object] = {"standard_signal": signal_name, "actual_names": actual_names}
+                if is_system_table:
+                    description_item = table.item(row_index, 1)
+                    required_by_item = table.item(row_index, 2)
+                    row["description"] = "" if description_item is None else description_item.text().strip()
+                    required_by = [] if required_by_item is None else (required_by_item.data(Qt.ItemDataRole.UserRole) or [])
+                    if isinstance(required_by, str):
+                        required_by = [required_by]
+                    if not required_by and required_by_item is not None:
+                        required_by = [line.strip() for line in required_by_item.text().splitlines() if line.strip()]
+                    row["required_by"] = list(required_by)
+                rows.append(row)
         return rows
 
     def save_mapping_editor(self) -> None:
@@ -4569,7 +4720,7 @@ class MainWindow(QMainWindow):
             return
         self._persisting_mapping = True
         try:
-            save_interface_signal_tables(self._extract_mapping_rows(self.system_mapping_table), self._extract_mapping_rows(self.custom_mapping_table))
+            save_interface_signal_tables(self._extract_mapping_rows(self.system_mapping_table), self._extract_mapping_rows(self.custom_mapping_table), actual_name_column_count=self._mapping_actual_name_column_count)
             self._interface_signal_names = sorted(get_plot_signal_names())
             self.plot_signal_names = sorted({*self._interface_signal_names, *self._derived_signal_names, *self._formula_signal_names, *self._kpi_signal_names})
             self._signal_browser_all = list(self.plot_signal_names)
@@ -4581,7 +4732,7 @@ class MainWindow(QMainWindow):
         row_index = self.custom_mapping_table.rowCount()
         self.custom_mapping_table.blockSignals(True)
         self.custom_mapping_table.insertRow(row_index)
-        for column_index in range(len(CUSTOM_MAPPING_HEADERS)):
+        for column_index in range(self.custom_mapping_table.columnCount()):
             self.custom_mapping_table.setItem(row_index, column_index, QTableWidgetItem(""))
         self.custom_mapping_table.blockSignals(False)
         self.mapping_tabs.setCurrentIndex(1)
@@ -4595,7 +4746,7 @@ class MainWindow(QMainWindow):
 
     def _invalid_mapping_rows(self, table: QTableWidget) -> set[int]:
         invalid_rows: set[int] = set()
-        actual_name_start = 2 if table is self.system_mapping_table else 1
+        actual_name_start = 3 if table is self.system_mapping_table else 1
         for row_index in range(table.rowCount()):
             signal_item = table.item(row_index, 0)
             signal_name = "" if signal_item is None else signal_item.text().strip()

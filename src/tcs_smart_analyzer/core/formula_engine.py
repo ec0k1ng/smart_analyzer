@@ -12,13 +12,13 @@ FORMULA_FUNCTION_REFERENCE = [
     {
         "name": "max",
         "description": "取序列最大值。",
-        "example": "max(peak_slip_ratio)",
+        "example": "max(max_slip_kph)",
         "rank": 1,
     },
     {
         "name": "mean",
         "description": "取序列平均值。",
-        "example": "mean(vehicle_speed)",
+        "example": "mean(vehicle_speed_kph)",
         "rank": 2,
     },
     {
@@ -30,7 +30,7 @@ FORMULA_FUNCTION_REFERENCE = [
     {
         "name": "sum",
         "description": "对序列求和。",
-        "example": "sum(tcs_active_time_s)",
+        "example": "sum(tcs_ctrl_time_max_s)",
         "rank": 4,
     },
     {
@@ -42,25 +42,25 @@ FORMULA_FUNCTION_REFERENCE = [
     {
         "name": "dominant_frequency",
         "description": "计算序列主频。",
-        "example": "dominant_frequency(vehicle_speed, time_s)",
+        "example": "dominant_frequency(vehicle_speed_kph, time_s)",
         "rank": 6,
     },
     {
         "name": "missing_rate",
         "description": "返回多个输入信号中的最大缺失率。",
-        "example": "missing_rate(wheel_speed_rl, wheel_speed_rr, vehicle_speed)",
+        "example": "missing_rate(wheel_speed_rl_kph, wheel_speed_rr_kph, vehicle_speed_kph)",
         "rank": 7,
     },
     {
         "name": "count",
         "description": "统计元素个数。",
-        "example": "count(vehicle_speed)",
+        "example": "count(vehicle_speed_kph)",
         "rank": 8,
     },
     {
         "name": "percentile",
         "description": "计算序列分位值。",
-        "example": "percentile(peak_slip_ratio, 95)",
+        "example": "percentile(max_slip_kph, 95)",
         "rank": 9,
     },
 ]
@@ -69,31 +69,31 @@ COMPARISON_OPERATOR_REFERENCE = [
     {
         "operator": "<=",
         "meaning": "测量值小于等于阈值时判定通过。",
-        "example": "max(peak_slip_ratio) <= 0.18",
+        "example": "max(max_slip_kph) <= 30.0",
         "note": "最常用于峰值上限类规则。",
     },
     {
         "operator": ">=",
         "meaning": "测量值大于等于阈值时判定通过。",
-        "example": "count(vehicle_speed) >= 1",
+        "example": "count(vehicle_speed_kph) >= 1",
         "note": "最常用于数据完整性和计数类规则。",
     },
     {
         "operator": "<",
         "meaning": "测量值严格小于阈值时判定通过。",
-        "example": "mean(peak_slip_ratio) < 0.1",
+        "example": "mean(max_slip_kph) < 10.0",
         "note": "适用于严格上界场景。",
     },
     {
         "operator": ">",
         "meaning": "测量值严格大于阈值时判定通过。",
-        "example": "first(vehicle_speed) > 0.5",
+        "example": "first(vehicle_speed_kph) > 0.5",
         "note": "适用于下界判定。",
     },
     {
         "operator": "==",
         "meaning": "测量值与阈值完全相等时判定通过。",
-        "example": "count(tcs_active_time_s) == 0",
+        "example": "count(tcs_ctrl_time_max_s) == 0",
         "note": "通常只建议用于离散计数。",
     },
 ]

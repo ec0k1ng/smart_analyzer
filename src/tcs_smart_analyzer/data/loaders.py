@@ -594,9 +594,7 @@ def _load_mat_file(path: Path, required_signals: Iterable[str] | None = None) ->
     selected_names = _select_requested_names(raw.keys(), required_signals)
 
     for key, value in raw.items():
-        if key.startswith("__"):
-            continue
-        if selected_names is not None and key not in selected_names:
+        if key.startswith("__") or (selected_names is not None and key not in selected_names):
             continue
 
         array = np.asarray(value).squeeze()

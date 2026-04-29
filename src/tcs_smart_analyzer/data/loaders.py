@@ -4,7 +4,7 @@ import csv
 import io
 import re
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import numpy as np
@@ -122,7 +122,7 @@ def _is_time_axis_name(name: object) -> bool:
     return _strip_unit_suffix(normalized) in TIME_AXIS_ALIASES
 
 
-def _requested_signal_lookups(
+def _build_requested_signal_sets(
     required_signals: Iterable[str] | None,
 ) -> tuple[set[str] | None, set[str] | None, bool]:
     requested = _normalize_requested_signal_names(required_signals)
@@ -151,15 +151,15 @@ def _matches_requested_name(
     return include_time_axis and _is_time_axis_name(candidate_text)
 
 
-def _build_requested_column_selector(required_signals: Iterable[str] | None):
-    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+def _build_requested_column_selector(required_signals: Iterable[str] | None) -> Callable[[object], bool] | None:
+    requested_exact, requested_cleaned, include_time_axis = _build_requested_signal_sets(required_signals)
     if requested_exact is None or requested_cleaned is None:
         return None
     return lambda column_name: _matches_requested_name(column_name, requested_exact, requested_cleaned, include_time_axis)
 
 
 def _filter_requested_columns(dataframe: pd.DataFrame, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
-    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+    requested_exact, requested_cleaned, include_time_axis = _build_requested_signal_sets(required_signals)
     if requested_exact is None or requested_cleaned is None:
         return dataframe
     selected_columns = [
@@ -173,7 +173,7 @@ def _filter_requested_columns(dataframe: pd.DataFrame, required_signals: Iterabl
 
 
 def _select_requested_names(available_names: Iterable[object], required_signals: Iterable[str] | None = None) -> list[str] | None:
-    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+    requested_exact, requested_cleaned, include_time_axis = _build_requested_signal_sets(required_signals)
     if requested_exact is None or requested_cleaned is None:
         return None
     selected: list[str] = []
@@ -186,6 +186,13 @@ def _select_requested_names(available_names: Iterable[object], required_signals:
             selected.append(normalized_name)
             seen.add(normalized_name)
     return selected or None
+
+
+def _get_mdf_channel_names(mdf_like) -> list[str]:  # noqa: ANN001
+    channels_db = getattr(mdf_like, "channels_db", {})
+    if hasattr(channels_db, "keys"):
+        return [str(name).strip() for name in channels_db.keys() if str(name).strip()]
+    return []
 
 
 def _load_csv_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
@@ -626,7 +633,7 @@ def _load_mdf_file(path: Path, required_signals: Iterable[str] | None = None) ->
     dataframe = _try_decode_bus_mdf(mdf, path, required_signals=required_signals)
     if dataframe is None:
         try:
-            selected_channels = _select_requested_names(getattr(getattr(mdf, "channels_db", {}), "keys", lambda: [])(), required_signals)
+            selected_channels = _select_requested_names(_get_mdf_channel_names(mdf), required_signals)
             if selected_channels is not None:
                 dataframe = mdf.to_dataframe(channels=selected_channels)
             else:
@@ -774,7 +781,7 @@ def _try_decode_bus_mdf(mdf, path: Path, required_signals: Iterable[str] | None 
     except Exception:
         return None
     try:
-        selected_channels = _select_requested_names(getattr(getattr(decoded_mdf, "channels_db", {}), "keys", lambda: [])(), required_signals)
+        selected_channels = _select_requested_names(_get_mdf_channel_names(decoded_mdf), required_signals)
         if selected_channels is not None:
             dataframe = decoded_mdf.to_dataframe(channels=selected_channels).reset_index()
         else:

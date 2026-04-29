@@ -14,12 +14,12 @@ src/tcs_smart_analyzer/config/analysis_settings.py
 src/tcs_smart_analyzer/config/chart_view_state.json
 src/tcs_smart_analyzer/config/editable_configs.py
 src/tcs_smart_analyzer/config/interface_mapping.json
+src/tcs_smart_analyzer/config/interface_mapping.xlsx
 src/tcs_smart_analyzer/config/kpi_definitions.json
 src/tcs_smart_analyzer/config/kpi_groups.json
 src/tcs_smart_analyzer/config/rule_definitions.json
 src/tcs_smart_analyzer/config/rule_settings.py
 src/tcs_smart_analyzer/config/rule_thresholds.json
-src/tcs_smart_analyzer/config/signal_defaults.py
 src/tcs_smart_analyzer/config/signal_library_formulas.json
 src/tcs_smart_analyzer/config/derived_signals/00_example_and_guide.py
 src/tcs_smart_analyzer/config/derived_signals/abs_target_slip_kph.py
@@ -35,6 +35,8 @@ src/tcs_smart_analyzer/config/kpi_specs/mean_full_brake_decel_mps2.py
 src/tcs_smart_analyzer/config/kpi_specs/mean_full_throttle_accel_mps2.py
 src/tcs_smart_analyzer/config/kpi_specs/shake_rms_mps2.py
 src/tcs_smart_analyzer/config/kpi_specs/tcs_ctrl_time_max_s.py
+src/tcs_smart_analyzer/config/report_templates/00_example_and_guide.html
+src/tcs_smart_analyzer/config/report_templates/demo_template.html
 src/tcs_smart_analyzer/config/rule_specs/00_example_and_guide.py
 src/tcs_smart_analyzer/core/__init__.py
 src/tcs_smart_analyzer/core/engine.py

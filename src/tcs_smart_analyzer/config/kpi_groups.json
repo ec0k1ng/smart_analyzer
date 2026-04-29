@@ -30,7 +30,8 @@
         "abs_ctrl_time_max_s",
         "mean_full_brake_decel_mps2",
         "max_jerk_mps3"
-      ]
+      ],
+      "is_builtin": false
     }
   ]
 }

@@ -107,7 +107,7 @@ tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
 - tests/test_dat_tcs.xlsx 是真实 Excel 样例
 - 当前最近一次聚焦回归验证为：pytest tests/test_loaders.py tests/test_engine_pipeline.py，18 项通过
 - 当前最近一次 GUI 离屏冒烟已通过，且包含曲线页 plot area 完整性探针 chart_plot_area_full_enough
-- 用户机器上仍有“分析后曲线页首次显示可能不完整”的反馈，代码已加入延后布局收尾和切到曲线页主动刷新，但仍需真实机回归确认
+- 曲线页首次显示完整性问题已在真实机器上完成复核确认，当前保留的延后布局收尾与切到曲线页主动刷新逻辑视为正式修复链路
 - GUI 离屏冒烟脚本在 scripts/gui_smoke_check.py
 
 ## 不要再写进文档的旧说法

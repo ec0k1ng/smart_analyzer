@@ -76,7 +76,7 @@ def calculate_kpi_series(dataframe):
 3. tcs_target_slip_kph - TCS全局目标打滑量 - 对所有 TCS 激活区间内的 |slip_kph| 按时间差做加权平均，输出单个目标打滑量标量。
 
 当前接口映射表中的标准输入量：
-1. time_s - 时间轴，单位 s，必须配置且固定排在第一行。
+1. time_s - 时间轴，单位 s。
 2. abs_active_fl - 左前轮 ABS 激活标志，布尔/0-1。
 3. abs_active_fr - 右前轮 ABS 激活标志，布尔/0-1。
 4. abs_active_rl - 左后轮 ABS 激活标志，布尔/0-1。

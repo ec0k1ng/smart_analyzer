@@ -219,7 +219,16 @@ def build_signal_mapping(columns: Iterable[str], required_signals: Iterable[str]
     mapping: dict[str, str] = {}
     interface_mapping = load_interface_mapping()
     candidate_names: list[str] = []
-    for name in [*interface_mapping.keys(), *(required_signals or [])]:
+    candidate_source = list(required_signals) if required_signals is not None else list(interface_mapping.keys())
+    if required_signals is not None:
+        required_set = {str(name).strip() for name in required_signals if str(name).strip()}
+        for bundle in [
+            {"tcs_active", "tcs_active_fl", "tcs_active_fr", "tcs_active_rl", "tcs_active_rr"},
+            {"abs_active", "abs_active_fl", "abs_active_fr", "abs_active_rl", "abs_active_rr"},
+        ]:
+            if required_set.intersection(bundle):
+                candidate_source.extend(name for name in bundle if name in interface_mapping)
+    for name in candidate_source:
         normalized_name = str(name).strip()
         if normalized_name and normalized_name not in candidate_names:
             candidate_names.append(normalized_name)

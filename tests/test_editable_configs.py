@@ -95,6 +95,8 @@ class EditableConfigTests(unittest.TestCase):
         self.assertEqual(reference_sheet.cell(row=1, column=1).value, "raw_input_name")
         self.assertEqual(reference_sheet.cell(row=1, column=2).value, "from")
         self.assertTrue(any("单位" in value for value in mapping_descriptions))
+        self.assertEqual(mapping_descriptions[0], "时间轴，单位 s。")
+        self.assertFalse(any("必须配置且固定排在第一行" in value for value in mapping_descriptions))
         self.assertTrue(any("KPI:" in value or "派生量:" in value for value in mapping_sources))
         self.assertEqual(custom_sheet.max_column, 4)
         self.assertGreater(float(mapping_sheet.column_dimensions["A"].width), 10.0)
@@ -161,6 +163,8 @@ class EditableConfigTests(unittest.TestCase):
         self.assertIn("请使用中文", guide_text)
         self.assertIn("必须使用英文", derived_guide_text)
         self.assertIn("请使用中文", derived_guide_text)
+        self.assertNotIn("必须配置且固定排在第一行", guide_text)
+        self.assertNotIn("必须配置且固定排在第一行", derived_guide_text)
         self.assertNotIn("DISPLAY_NAME = \"KPI 展示名称\"", guide_text)
         self.assertNotIn("DISPLAY_NAME = \"派生量展示名称\"", derived_guide_text)
 

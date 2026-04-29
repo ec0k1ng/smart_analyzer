@@ -16,6 +16,28 @@ CAN_DATABASE_DIR = Path(__file__).resolve().parents[1] / "config" / "can_databas
 TEXT_ENCODINGS = ["utf-8-sig", "utf-8", "gb18030", "gbk", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "latin1"]
 OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ZIP_SIGNATURE = b"PK\x03\x04"
+TIME_AXIS_ALIASES = {
+    "time",
+    "timestamps",
+    "timestamp",
+    "time[s]",
+    "time(s)",
+    "times",
+    "ts",
+    "time [s]",
+    "time (s)",
+    "t [s]",
+    "t(s)",
+    "t[s]",
+    "zeit",
+    "zeit [s]",
+    "zeit(s)",
+    "zeit[s]",
+    "time_stamp",
+    "timestamp_s",
+    "elapsed_time",
+    "t",
+}
 
 
 class UnsupportedFileTypeError(ValueError):
@@ -40,22 +62,23 @@ def load_timeseries_file(file_path: str | Path, required_signals: Iterable[str] 
         )
 
     if suffix == ".csv":
-        dataframe = _load_csv_file(path)
+        dataframe = _load_csv_file(path, required_signals=required_signals)
     elif suffix in {".xlsx", ".xls"}:
-        dataframe = _load_excel_file(path)
+        dataframe = _load_excel_file(path, required_signals=required_signals)
     elif suffix == ".dat":
-        dataframe = _load_dat_file(path)
+        dataframe = _load_dat_file(path, required_signals=required_signals)
     elif suffix == ".mat":
-        dataframe = _load_mat_file(path)
+        dataframe = _load_mat_file(path, required_signals=required_signals)
     elif suffix == ".blf":
         dataframe = _load_blf_file(path, required_signals=required_signals)
     elif suffix == ".asc":
         dataframe = _load_asc_file(path, required_signals=required_signals)
     else:
-        dataframe = _load_mdf_file(path)
+        dataframe = _load_mdf_file(path, required_signals=required_signals)
 
     dataframe.columns = [_clean_column_name(column) for column in dataframe.columns]
-    return _normalize_time_axis_column(dataframe)
+    dataframe = _normalize_time_axis_column(dataframe)
+    return _filter_requested_columns(dataframe, required_signals)
 
 
 def _normalize_time_axis_column(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -92,7 +115,80 @@ def _strip_unit_suffix(name: str) -> str:
     return cleaned.strip()
 
 
-def _load_csv_file(path: Path) -> pd.DataFrame:
+def _is_time_axis_name(name: object) -> bool:
+    normalized = str(name).strip().lower()
+    if normalized == "time_s":
+        return True
+    return _strip_unit_suffix(normalized) in TIME_AXIS_ALIASES
+
+
+def _requested_signal_lookups(
+    required_signals: Iterable[str] | None,
+) -> tuple[set[str] | None, set[str] | None, bool]:
+    requested = _normalize_requested_signal_names(required_signals)
+    if requested is None:
+        return None, None, False
+    exact = {name.lower() for name in requested}
+    cleaned = {_clean_column_name(name).lower() for name in requested if _clean_column_name(name)}
+    include_time_axis = any(name == "time_s" or _is_time_axis_name(name) for name in requested)
+    return exact, cleaned, include_time_axis
+
+
+def _matches_requested_name(
+    candidate: object,
+    requested_exact: set[str] | None,
+    requested_cleaned: set[str] | None,
+    include_time_axis: bool,
+) -> bool:
+    if requested_exact is None or requested_cleaned is None:
+        return True
+    candidate_text = str(candidate).strip()
+    candidate_cleaned = _clean_column_name(candidate_text)
+    if candidate_text.lower() in requested_exact or candidate_cleaned.lower() in requested_exact:
+        return True
+    if candidate_cleaned.lower() in requested_cleaned:
+        return True
+    return include_time_axis and _is_time_axis_name(candidate_text)
+
+
+def _build_requested_column_selector(required_signals: Iterable[str] | None):
+    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+    if requested_exact is None or requested_cleaned is None:
+        return None
+    return lambda column_name: _matches_requested_name(column_name, requested_exact, requested_cleaned, include_time_axis)
+
+
+def _filter_requested_columns(dataframe: pd.DataFrame, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
+    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+    if requested_exact is None or requested_cleaned is None:
+        return dataframe
+    selected_columns = [
+        column
+        for column in dataframe.columns
+        if _matches_requested_name(column, requested_exact, requested_cleaned, include_time_axis)
+    ]
+    if not selected_columns:
+        return dataframe
+    return dataframe.loc[:, selected_columns]
+
+
+def _select_requested_names(available_names: Iterable[object], required_signals: Iterable[str] | None = None) -> list[str] | None:
+    requested_exact, requested_cleaned, include_time_axis = _requested_signal_lookups(required_signals)
+    if requested_exact is None or requested_cleaned is None:
+        return None
+    selected: list[str] = []
+    seen: set[str] = set()
+    for name in available_names:
+        normalized_name = str(name).strip()
+        if not normalized_name or normalized_name in seen:
+            continue
+        if _matches_requested_name(normalized_name, requested_exact, requested_cleaned, include_time_axis):
+            selected.append(normalized_name)
+            seen.add(normalized_name)
+    return selected or None
+
+
+def _load_csv_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     raw_bytes = path.read_bytes()
     if not raw_bytes.strip():
         raise UnsupportedFileTypeError("CSV 文件为空。")
@@ -104,7 +200,7 @@ def _load_csv_file(path: Path) -> pd.DataFrame:
         except UnicodeDecodeError:
             continue
         try:
-            return _load_delimited_text(text, source_label=path.name)
+            return _load_delimited_text(text, source_label=path.name, required_signals=required_signals)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{encoding}: {exc}")
             continue
@@ -115,13 +211,13 @@ def _load_csv_file(path: Path) -> pd.DataFrame:
     raise UnsupportedFileTypeError("CSV 文件编码无法识别，请确认文件已完整导出。")
 
 
-def _load_excel_file(path: Path) -> pd.DataFrame:
+def _load_excel_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     raw_bytes = path.read_bytes()
     if not raw_bytes.strip():
         raise UnsupportedFileTypeError("Excel 文件为空。")
 
     if _looks_like_delimited_text(raw_bytes):
-        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name)
+        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name, required_signals=required_signals)
 
     engine_candidates: list[str | None]
     if raw_bytes.startswith(ZIP_SIGNATURE):
@@ -132,11 +228,14 @@ def _load_excel_file(path: Path) -> pd.DataFrame:
         engine_candidates = [None, "openpyxl", "xlrd", "pyxlsb"]
 
     errors: list[str] = []
+    usecols = _build_requested_column_selector(required_signals)
     for engine in engine_candidates:
         try:
             read_options = {"sheet_name": 0}
             if engine is not None:
                 read_options["engine"] = engine
+            if usecols is not None:
+                read_options["usecols"] = usecols
             dataframe = pd.read_excel(path, **read_options)
             dataframe = _clean_tabular_frame(dataframe)
             if _is_viable_tabular_frame(dataframe):
@@ -147,7 +246,7 @@ def _load_excel_file(path: Path) -> pd.DataFrame:
             errors.append(f"{engine or 'auto'}: {exc}")
 
     if _looks_like_delimited_text(raw_bytes, allow_binary_fallback=True):
-        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name)
+        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name, required_signals=required_signals)
 
     if _looks_like_protected_or_nonstandard_excel(raw_bytes):
         raise UnsupportedFileTypeError(
@@ -203,12 +302,13 @@ def _looks_like_delimited_text(raw_bytes: bytes, allow_binary_fallback: bool = F
     return any(delimiter in joined for delimiter in [",", ";", "\t", "|"])
 
 
-def _load_delimited_text(text: str, source_label: str) -> pd.DataFrame:
+def _load_delimited_text(text: str, source_label: str, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
         raise UnsupportedFileTypeError(f"{source_label} 为空或未包含可读取的表格。")
 
     errors: list[str] = []
+    usecols = _build_requested_column_selector(required_signals)
     for delimiter in _candidate_delimiters(lines):
         decimal_candidates = [",", "."] if delimiter in {";", "\t"} else ["."]
         for decimal in decimal_candidates:
@@ -219,6 +319,8 @@ def _load_delimited_text(text: str, source_label: str) -> pd.DataFrame:
                     "on_bad_lines": "skip",
                     "decimal": decimal,
                 }
+                if usecols is not None:
+                    read_options["usecols"] = usecols
                 if delimiter is None:
                     read_options["sep"] = None
                 else:
@@ -262,12 +364,12 @@ def _is_viable_tabular_frame(dataframe: pd.DataFrame) -> bool:
     return not dataframe.empty and dataframe.shape[1] >= 2
 
 
-def _load_dat_file(path: Path) -> pd.DataFrame:
-    measurement_frame = _try_load_dat_as_measurement_file(path)
+def _load_dat_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
+    measurement_frame = _try_load_dat_as_measurement_file(path, required_signals=required_signals)
     if measurement_frame is not None:
         return measurement_frame
 
-    inca_frame = _try_load_inca_dat(path)
+    inca_frame = _try_load_inca_dat(path, required_signals=required_signals)
     if inca_frame is not None:
         return inca_frame
 
@@ -287,6 +389,9 @@ def _load_dat_file(path: Path) -> pd.DataFrame:
     header_index, delimiter = _detect_dat_table(lines)
     candidate_text = "\n".join(lines[header_index:])
     read_options = {"engine": "python"}
+    usecols = _build_requested_column_selector(required_signals)
+    if usecols is not None:
+        read_options["usecols"] = usecols
     if delimiter == r"\s+":
         read_options["sep"] = delimiter
     else:
@@ -298,7 +403,7 @@ def _load_dat_file(path: Path) -> pd.DataFrame:
     return dataframe
 
 
-def _try_load_inca_dat(path: Path) -> pd.DataFrame | None:
+def _try_load_inca_dat(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame | None:
     raw_bytes = path.read_bytes()
     if b"\x00" in raw_bytes[:4096]:
         return None
@@ -437,9 +542,9 @@ def _next_non_empty_line(lines: list[str], start: int) -> int | None:
     return None
 
 
-def _try_load_dat_as_measurement_file(path: Path) -> pd.DataFrame | None:
+def _try_load_dat_as_measurement_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame | None:
     try:
-        dataframe = _load_mdf_file(path)
+        dataframe = _load_mdf_file(path, required_signals=required_signals)
     except Exception:  # noqa: BLE001
         return None
     if dataframe.empty or dataframe.shape[1] < 2:
@@ -477,7 +582,7 @@ def _looks_numeric(value: str) -> bool:
         return False
 
 
-def _load_mat_file(path: Path) -> pd.DataFrame:
+def _load_mat_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     try:
         from scipy.io import loadmat
     except ImportError as exc:
@@ -486,9 +591,12 @@ def _load_mat_file(path: Path) -> pd.DataFrame:
     raw = loadmat(path, squeeze_me=True, struct_as_record=False)
     series_map: dict[str, np.ndarray] = {}
     expected_length: int | None = None
+    selected_names = _select_requested_names(raw.keys(), required_signals)
 
     for key, value in raw.items():
         if key.startswith("__"):
+            continue
+        if selected_names is not None and key not in selected_names:
             continue
 
         array = np.asarray(value).squeeze()
@@ -510,17 +618,21 @@ def _load_mat_file(path: Path) -> pd.DataFrame:
     return pd.DataFrame(series_map)
 
 
-def _load_mdf_file(path: Path) -> pd.DataFrame:
+def _load_mdf_file(path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
     try:
         from asammdf import MDF
     except ImportError as exc:
         raise UnsupportedFileTypeError("读取 MDF/MF4 文件需要先安装 asammdf。") from exc
 
     mdf = MDF(str(path))
-    dataframe = _try_decode_bus_mdf(mdf, path)
+    dataframe = _try_decode_bus_mdf(mdf, path, required_signals=required_signals)
     if dataframe is None:
         try:
-            dataframe = mdf.to_dataframe()
+            selected_channels = _select_requested_names(getattr(getattr(mdf, "channels_db", {}), "keys", lambda: [])(), required_signals)
+            if selected_channels is not None:
+                dataframe = mdf.to_dataframe(channels=selected_channels)
+            else:
+                dataframe = mdf.to_dataframe()
         except Exception as exc:
             raise UnsupportedFileTypeError(f"MDF/MF4 文件解析失败：{exc}") from exc
     dataframe = dataframe.reset_index()
@@ -651,7 +763,7 @@ def _load_asc_file(path: Path, required_signals: Iterable[str] | None = None) ->
     return _build_bus_frame_from_timeseries(signal_timeseries, "ASC", decoded_count, undecoded_count)
 
 
-def _try_decode_bus_mdf(mdf, path: Path) -> pd.DataFrame | None:  # noqa: ANN001
+def _try_decode_bus_mdf(mdf, path: Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame | None:  # noqa: ANN001
     dbc_paths = _discover_dbc_paths(path)
     if not dbc_paths:
         return None
@@ -664,7 +776,11 @@ def _try_decode_bus_mdf(mdf, path: Path) -> pd.DataFrame | None:  # noqa: ANN001
     except Exception:
         return None
     try:
-        dataframe = decoded_mdf.to_dataframe().reset_index()
+        selected_channels = _select_requested_names(getattr(getattr(decoded_mdf, "channels_db", {}), "keys", lambda: [])(), required_signals)
+        if selected_channels is not None:
+            dataframe = decoded_mdf.to_dataframe(channels=selected_channels).reset_index()
+        else:
+            dataframe = decoded_mdf.to_dataframe().reset_index()
     except Exception:
         return None
     if dataframe.empty or dataframe.shape[1] <= 1:

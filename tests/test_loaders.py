@@ -81,6 +81,16 @@ class LoaderTests(unittest.TestCase):
             self.assertEqual(len(dataframe), 2)
             self.assertAlmostEqual(float(dataframe.iloc[1]["wheel_speed_fl"]), 12.0)
 
+    def test_csv_loading_only_keeps_requested_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.csv"
+            path.write_text("Timestamp,wheel_speed_fl,unused_signal\n0.0,10,99\n0.1,12,98\n", encoding="utf-8")
+
+            dataframe = load_timeseries_file(path, required_signals={"time_s", "wheel_speed_fl"})
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+            self.assertNotIn("unused_signal", dataframe.columns)
+
     def test_xlsx_file_can_be_loaded_with_explicit_engine_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "sample.xlsx"
@@ -90,6 +100,16 @@ class LoaderTests(unittest.TestCase):
 
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
             self.assertEqual(len(dataframe), 2)
+
+    def test_xlsx_loading_only_keeps_requested_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.xlsx"
+            pd.DataFrame({"time_s": [0.0, 0.1], "wheel_speed_fl": [10, 12], "unused_signal": [99, 98]}).to_excel(path, index=False)
+
+            dataframe = load_timeseries_file(path, required_signals={"time_s", "wheel_speed_fl"})
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+            self.assertNotIn("unused_signal", dataframe.columns)
 
     def test_text_payload_named_xlsx_falls_back_to_delimited_reader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -111,6 +131,16 @@ class LoaderTests(unittest.TestCase):
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
             self.assertAlmostEqual(float(dataframe.iloc[1]["time_s"]), 0.1)
 
+    def test_dat_loading_only_keeps_requested_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.dat"
+            path.write_text("time_s\twheel_speed_fl\tunused_signal\n0.0\t10\t99\n0.1\t12\t98\n", encoding="utf-8")
+
+            dataframe = load_timeseries_file(path, required_signals={"time_s", "wheel_speed_fl"})
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+            self.assertNotIn("unused_signal", dataframe.columns)
+
     def test_binary_dat_file_raises_helpful_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "binary.dat"
@@ -130,6 +160,28 @@ class LoaderTests(unittest.TestCase):
                 dataframe = load_timeseries_file(path)
 
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+
+    def test_mat_loader_receives_requested_signals_and_filters_result(self) -> None:
+        expected = {"time_s", "wheel_speed_fl"}
+        with patch(
+            "tcs_smart_analyzer.data.loaders._load_mat_file",
+            return_value=pd.DataFrame({"time_s": [0.0], "wheel_speed_fl": [1.0], "unused_signal": [2.0]}),
+        ) as loader_mock:
+            dataframe = load_timeseries_file("/tmp/sample.mat", required_signals=expected)
+
+        loader_mock.assert_called_once_with(Path("/tmp/sample.mat"), required_signals=expected)
+        self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+
+    def test_mdf_loader_receives_requested_signals_and_filters_result(self) -> None:
+        expected = {"time_s", "wheel_speed_fl"}
+        with patch(
+            "tcs_smart_analyzer.data.loaders._load_mdf_file",
+            return_value=pd.DataFrame({"time_s": [0.0], "wheel_speed_fl": [1.0], "unused_signal": [2.0]}),
+        ) as loader_mock:
+            dataframe = load_timeseries_file("/tmp/sample.mf4", required_signals=expected)
+
+        loader_mock.assert_called_once_with(Path("/tmp/sample.mf4"), required_signals=expected)
+        self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
 
     def test_non_text_dat_without_null_bytes_can_fallback_to_measurement_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

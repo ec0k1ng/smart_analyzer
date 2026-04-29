@@ -45,7 +45,7 @@ def build_custom_interface_mapping_headers(actual_name_column_count: int = DEFAU
     return ["raw_input_name", *[f"actual_signal_name_{index}" for index in range(1, count + 1)]]
 
 RAW_INPUT_DESCRIPTIONS = {
-    "time_s": "时间轴，单位 s，必须配置且固定排在第一行。",
+    "time_s": "时间轴，单位 s。",
     "vehicle_speed_kph": "车速，单位 kph。",
     "wheel_speed_fl_kph": "左前轮轮速，单位 kph。",
     "wheel_speed_fr_kph": "右前轮轮速，单位 kph。",

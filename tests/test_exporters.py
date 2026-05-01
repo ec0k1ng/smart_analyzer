@@ -7,11 +7,51 @@ from pathlib import Path
 
 from docx import Document
 
+from tcs_smart_analyzer.config.editable_configs import get_config_file_paths, save_interface_signal_tables
 from tcs_smart_analyzer.core.engine import AnalysisEngine
 from tcs_smart_analyzer.reporting.exporters import build_batch_report_context, build_report_context, export_html, export_json_summary, export_word
 
 
 class ExporterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        config_paths = get_config_file_paths()
+        self._interface_mapping_path = config_paths["interface_mapping"]
+        self._interface_mapping_backup = self._interface_mapping_path.read_bytes() if self._interface_mapping_path.exists() else None
+        save_interface_signal_tables(
+            [
+                {"standard_signal": "time_s", "actual_names": ["time_s"]},
+                {"standard_signal": "wheel_speed_fl_kph", "actual_names": ["wheel_speed_fl"]},
+                {"standard_signal": "wheel_speed_fr_kph", "actual_names": ["wheel_speed_fr"]},
+                {"standard_signal": "wheel_speed_rl_kph", "actual_names": ["wheel_speed_rl"]},
+                {"standard_signal": "wheel_speed_rr_kph", "actual_names": ["wheel_speed_rr"]},
+                {"standard_signal": "vehicle_speed_kph", "actual_names": ["vehicle_speed"]},
+                {"standard_signal": "accel_pedal_pct", "actual_names": ["accel_pedal_pct"]},
+                {"standard_signal": "brake_depth_pct", "actual_names": ["time_s*0"]},
+                {"standard_signal": "torque_request_nm", "actual_names": ["torque_request_nm"]},
+                {"standard_signal": "torque_actual_nm", "actual_names": ["torque_actual_nm"]},
+                {"standard_signal": "longitudinal_accel_mps2", "actual_names": ["longitudinal_accel_mps2"]},
+                {"standard_signal": "abs_active_fl", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_fr", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_rl", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_rr", "actual_names": ["time_s*0"]},
+                {"standard_signal": "yaw_rate_degps", "actual_names": ["time_s*0"]},
+                {"standard_signal": "steering_wheel_angle_deg", "actual_names": ["time_s*0"]},
+                {"standard_signal": "tcs_active", "actual_names": ["tcs_active"]},
+                {"standard_signal": "tcs_active_fl", "actual_names": ["tcs_active"]},
+                {"standard_signal": "tcs_active_fr", "actual_names": ["tcs_active"]},
+                {"standard_signal": "tcs_active_rl", "actual_names": ["tcs_active"]},
+                {"standard_signal": "tcs_active_rr", "actual_names": ["tcs_active"]},
+            ],
+            [],
+        )
+
+    def tearDown(self) -> None:
+        if self._interface_mapping_backup is None:
+            if self._interface_mapping_path.exists():
+                self._interface_mapping_path.unlink()
+            return
+        self._interface_mapping_path.write_bytes(self._interface_mapping_backup)
+
     def test_json_summary_contains_traceability_metadata(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
         demo_file = project_root / "sample_data" / "tcs_demo.csv"

@@ -3,29 +3,68 @@
   "sheets": [
     {
       "name": "工作表 1",
+      "signal_table_width": 311,
       "panels": [
         {
-          "signals": []
+          "signals": [
+            "vehicle_speed_kph",
+            "brake_depth_pct"
+          ],
+          "hidden_signals": []
         },
         {
           "signals": [
             "slip_kph",
-            "tcs_target_slip_kph",
+            "tcs_active_fl",
             "abs_target_slip_kph"
-          ]
+          ],
+          "hidden_signals": []
         },
         {
           "signals": [
             "abs_ctrl_time_max_s"
-          ]
+          ],
+          "hidden_signals": []
         },
         {
           "signals": [
             "mean_full_throttle_accel_mps2"
-          ]
+          ],
+          "hidden_signals": []
         },
         {
-          "signals": []
+          "signals": [
+            "vehicle_speed_kph"
+          ],
+          "hidden_signals": []
+        }
+      ]
+    },
+    {
+      "name": "工作表 2",
+      "signal_table_width": 271,
+      "panels": [
+        {
+          "signals": [
+            "abs_target_slip_kph",
+            "slip_kph",
+            "tcs_target_slip_kph"
+          ],
+          "hidden_signals": []
+        },
+        {
+          "signals": [
+            "abs_ctrl_time_max_s",
+            "max_jerk_mps3",
+            "max_slip_kph",
+            "max_steer_angle_deg",
+            "max_yaw_rate_degps",
+            "mean_full_brake_decel_mps2",
+            "mean_full_throttle_accel_mps2",
+            "shake_rms_mps2",
+            "tcs_ctrl_time_max_s"
+          ],
+          "hidden_signals": []
         }
       ]
     }

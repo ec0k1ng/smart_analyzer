@@ -30,8 +30,17 @@ def _clean_column_name(name: object) -> str:
 
 
 def load_timeseries_file(file_path: str | Path, required_signals: Iterable[str] | None = None) -> pd.DataFrame:
+    return _load_timeseries_file(file_path, required_signals=required_signals, selected_source_columns=None)
+
+
+def _load_timeseries_file(
+    file_path: str | Path,
+    required_signals: Iterable[str] | None = None,
+    selected_source_columns: Iterable[str] | None = None,
+) -> pd.DataFrame:
     path = Path(file_path)
     suffix = path.suffix.lower()
+    selected_columns = [str(name).strip() for name in (selected_source_columns or []) if str(name).strip()]
     if path.name.startswith("~$"):
         raise UnsupportedFileTypeError("检测到 Office/WPS 临时锁文件，请选择真实的数据文件再分析。")
     if suffix not in SUPPORTED_FILE_TYPES:
@@ -40,9 +49,9 @@ def load_timeseries_file(file_path: str | Path, required_signals: Iterable[str] 
         )
 
     if suffix == ".csv":
-        dataframe = _load_csv_file(path)
+        dataframe = _load_csv_file(path, selected_source_columns=selected_columns)
     elif suffix in {".xlsx", ".xls"}:
-        dataframe = _load_excel_file(path)
+        dataframe = _load_excel_file(path, selected_source_columns=selected_columns)
     elif suffix == ".dat":
         dataframe = _load_dat_file(path)
     elif suffix == ".mat":
@@ -55,11 +64,40 @@ def load_timeseries_file(file_path: str | Path, required_signals: Iterable[str] 
         dataframe = _load_mdf_file(path)
 
     dataframe.columns = [_clean_column_name(column) for column in dataframe.columns]
+    dataframe.attrs["source_columns_before_time_normalization"] = list(dataframe.columns)
+    dataframe.attrs["source_column_redirects"] = {}
     return _normalize_time_axis_column(dataframe)
 
 
+def load_timeseries_file(
+    file_path: str | Path,
+    required_signals: Iterable[str] | None = None,
+    selected_source_columns: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    return _load_timeseries_file(file_path, required_signals=required_signals, selected_source_columns=selected_source_columns)
+
+
+def inspect_timeseries_file_columns(file_path: str | Path) -> tuple[list[str], list[str], dict[str, str]] | None:
+    path = Path(file_path)
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        original_columns = _inspect_csv_columns(path)
+    elif suffix in {".xlsx", ".xls"}:
+        original_columns = _inspect_excel_columns(path)
+    else:
+        return None
+    if not original_columns:
+        return None
+    preview = pd.DataFrame(columns=original_columns)
+    preview.columns = [_clean_column_name(column) for column in preview.columns]
+    preview.attrs["source_columns_before_time_normalization"] = list(preview.columns)
+    preview.attrs["source_column_redirects"] = {}
+    normalized = _normalize_time_axis_column(preview)
+    return list(normalized.columns), list(normalized.attrs.get("source_columns_before_time_normalization", [])), dict(normalized.attrs.get("source_column_redirects", {}))
+
+
 def _normalize_time_axis_column(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe.empty or "time_s" in dataframe.columns:
+    if "time_s" in dataframe.columns:
         return dataframe
 
     normalized_lookup = {str(column).strip().lower(): column for column in dataframe.columns}
@@ -70,18 +108,24 @@ def _normalize_time_axis_column(dataframe: pd.DataFrame) -> pd.DataFrame:
     ]:
         actual = normalized_lookup.get(candidate)
         if actual is not None and actual != "time_s":
-            return dataframe.rename(columns={actual: "time_s"})
+            normalized = dataframe.rename(columns={actual: "time_s"})
+            normalized.attrs["source_column_redirects"] = {**dict(dataframe.attrs.get("source_column_redirects", {})), str(actual): "time_s"}
+            return normalized
 
     stripped_lookup = {_strip_unit_suffix(str(column).strip()).lower(): column for column in dataframe.columns}
     for candidate in ["time", "t", "timestamp", "zeit", "elapsed_time"]:
         actual = stripped_lookup.get(candidate)
         if actual is not None and actual != "time_s":
-            return dataframe.rename(columns={actual: "time_s"})
+            normalized = dataframe.rename(columns={actual: "time_s"})
+            normalized.attrs["source_column_redirects"] = {**dict(dataframe.attrs.get("source_column_redirects", {})), str(actual): "time_s"}
+            return normalized
 
     first_column = dataframe.columns[0]
     first_name = str(first_column).strip().lower()
     if first_name in {"index", "unnamed: 0"}:
-        return dataframe.rename(columns={first_column: "time_s"})
+        normalized = dataframe.rename(columns={first_column: "time_s"})
+        normalized.attrs["source_column_redirects"] = {**dict(dataframe.attrs.get("source_column_redirects", {})), str(first_column): "time_s"}
+        return normalized
 
     return dataframe
 
@@ -92,7 +136,22 @@ def _strip_unit_suffix(name: str) -> str:
     return cleaned.strip()
 
 
-def _load_csv_file(path: Path) -> pd.DataFrame:
+def _inspect_csv_columns(path: Path) -> list[str]:
+    raw_bytes = path.read_bytes()
+    if not raw_bytes.strip():
+        raise UnsupportedFileTypeError("CSV 文件为空。")
+    for encoding in TEXT_ENCODINGS:
+        try:
+            text = raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        columns = _inspect_delimited_text_columns(text)
+        if columns:
+            return columns
+    raise UnsupportedFileTypeError("CSV 文件编码无法识别，请确认文件已完整导出。")
+
+
+def _load_csv_file(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame:
     raw_bytes = path.read_bytes()
     if not raw_bytes.strip():
         raise UnsupportedFileTypeError("CSV 文件为空。")
@@ -104,7 +163,7 @@ def _load_csv_file(path: Path) -> pd.DataFrame:
         except UnicodeDecodeError:
             continue
         try:
-            return _load_delimited_text(text, source_label=path.name)
+            return _load_delimited_text(text, source_label=path.name, selected_source_columns=selected_source_columns)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{encoding}: {exc}")
             continue
@@ -115,13 +174,40 @@ def _load_csv_file(path: Path) -> pd.DataFrame:
     raise UnsupportedFileTypeError("CSV 文件编码无法识别，请确认文件已完整导出。")
 
 
-def _load_excel_file(path: Path) -> pd.DataFrame:
+def _inspect_excel_columns(path: Path) -> list[str]:
+    raw_bytes = path.read_bytes()
+    if not raw_bytes.strip():
+        raise UnsupportedFileTypeError("Excel 文件为空。")
+    if _looks_like_delimited_text(raw_bytes):
+        return _inspect_delimited_text_columns(_decode_text_bytes(raw_bytes))
+    engine_candidates: list[str | None]
+    if raw_bytes.startswith(ZIP_SIGNATURE):
+        engine_candidates = ["openpyxl", None]
+    elif raw_bytes.startswith(OLE_SIGNATURE):
+        engine_candidates = ["xlrd", None, "openpyxl"]
+    else:
+        engine_candidates = [None, "openpyxl", "xlrd", "pyxlsb"]
+    for engine in engine_candidates:
+        try:
+            read_options: dict[str, object] = {"sheet_name": 0, "nrows": 0}
+            if engine is not None:
+                read_options["engine"] = engine
+            dataframe = pd.read_excel(path, **read_options)
+            columns = [str(column) for column in dataframe.columns]
+            if len(columns) >= 2:
+                return columns
+        except Exception:  # noqa: BLE001
+            continue
+    raise UnsupportedFileTypeError("Excel 文件表头读取失败，无法建立接口映射。")
+
+
+def _load_excel_file(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame:
     raw_bytes = path.read_bytes()
     if not raw_bytes.strip():
         raise UnsupportedFileTypeError("Excel 文件为空。")
 
     if _looks_like_delimited_text(raw_bytes):
-        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name)
+        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name, selected_source_columns=selected_source_columns)
 
     engine_candidates: list[str | None]
     if raw_bytes.startswith(ZIP_SIGNATURE):
@@ -132,11 +218,14 @@ def _load_excel_file(path: Path) -> pd.DataFrame:
         engine_candidates = [None, "openpyxl", "xlrd", "pyxlsb"]
 
     errors: list[str] = []
+    selected_set = {_clean_column_name(name) for name in (selected_source_columns or []) if str(name).strip()}
     for engine in engine_candidates:
         try:
             read_options = {"sheet_name": 0}
             if engine is not None:
                 read_options["engine"] = engine
+            if selected_set:
+                read_options["usecols"] = lambda column_name: _clean_column_name(column_name) in selected_set
             dataframe = pd.read_excel(path, **read_options)
             dataframe = _clean_tabular_frame(dataframe)
             if _is_viable_tabular_frame(dataframe):
@@ -147,7 +236,7 @@ def _load_excel_file(path: Path) -> pd.DataFrame:
             errors.append(f"{engine or 'auto'}: {exc}")
 
     if _looks_like_delimited_text(raw_bytes, allow_binary_fallback=True):
-        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name)
+        return _load_delimited_text(_decode_text_bytes(raw_bytes), source_label=path.name, selected_source_columns=selected_source_columns)
 
     if _looks_like_protected_or_nonstandard_excel(raw_bytes):
         raise UnsupportedFileTypeError(
@@ -203,12 +292,34 @@ def _looks_like_delimited_text(raw_bytes: bytes, allow_binary_fallback: bool = F
     return any(delimiter in joined for delimiter in [",", ";", "\t", "|"])
 
 
-def _load_delimited_text(text: str, source_label: str) -> pd.DataFrame:
+def _inspect_delimited_text_columns(text: str) -> list[str]:
+    lines = [line for line in text.splitlines() if line.strip()]
+    if not lines:
+        return []
+    sample_lines = lines[:50]
+    for delimiter in _candidate_delimiters(sample_lines):
+        try:
+            read_options: dict[str, object] = {"engine": "python", "nrows": 0, "skipinitialspace": True}
+            if delimiter is None:
+                read_options["sep"] = None
+            else:
+                read_options["sep"] = delimiter
+            dataframe = pd.read_csv(io.StringIO("\n".join(sample_lines)), **read_options)
+            columns = [str(column) for column in dataframe.columns if not str(column).strip().lower().startswith("unnamed:")]
+            if len(columns) >= 2:
+                return columns
+        except Exception:  # noqa: BLE001
+            continue
+    return []
+
+
+def _load_delimited_text(text: str, source_label: str, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
         raise UnsupportedFileTypeError(f"{source_label} 为空或未包含可读取的表格。")
 
     errors: list[str] = []
+    selected_set = {_clean_column_name(name) for name in (selected_source_columns or []) if str(name).strip()}
     for delimiter in _candidate_delimiters(lines):
         decimal_candidates = [",", "."] if delimiter in {";", "\t"} else ["."]
         for decimal in decimal_candidates:
@@ -223,6 +334,8 @@ def _load_delimited_text(text: str, source_label: str) -> pd.DataFrame:
                     read_options["sep"] = None
                 else:
                     read_options["sep"] = delimiter
+                if selected_set:
+                    read_options["usecols"] = lambda column_name: _clean_column_name(column_name) in selected_set
                 dataframe = pd.read_csv(io.StringIO("\n".join(lines)), **read_options)
                 dataframe = _clean_tabular_frame(dataframe)
                 if _is_viable_tabular_frame(dataframe):

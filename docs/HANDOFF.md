@@ -117,7 +117,8 @@
 
 - 图表布局收尾已延后到事件循环下一拍。
 - 切到主标签“曲线”时会主动触发 refresh_chart_panels。
-- GUI 冒烟已加入 chart_plot_area_full_enough 探针并通过。
+- GUI 冒烟脚本已加入 chart_plot_area_full_enough 探针，但当前不要再把整套冒烟写成已通过。
+- 本轮已额外通过离屏定向验证：子框信号 Ctrl+W 局部隐藏/显示、hidden_signals 持久化、接口映射真实信号列可缩减到 1 列。
 
 规避方案：
 

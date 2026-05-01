@@ -35,17 +35,41 @@ INTERFACE_MAPPING_METADATA_SHEET = "_metadata"
 DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT = 3
 
 
+def _infer_interface_mapping_sheet_actual_name_column_counts(workbook) -> dict[str, int]:
+    counts = {
+        "system": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+        "custom": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+    }
+    for sheet_name, key in [(SYSTEM_MAPPING_SHEET, "system"), (CUSTOM_MAPPING_SHEET, "custom")]:
+        if sheet_name not in workbook.sheetnames:
+            continue
+        sheet = workbook[sheet_name]
+        header_row = [str(cell or "").strip().lower() for cell in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), [])]
+        actual_count = sum(1 for cell in header_row if cell.startswith("actual_signal_name_"))
+        if actual_count > DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT:
+            extra_column_start = (3 if key == "system" else 1) + DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+            has_legacy_extra_values = any(
+                str(cell or "").strip()
+                for row in sheet.iter_rows(min_row=2, values_only=True)
+                for cell in row[extra_column_start:]
+            )
+            if not has_legacy_extra_values:
+                actual_count = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+        counts[key] = max(1, actual_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT)
+    return counts
+
+
 def build_system_interface_mapping_headers(actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> list[str]:
-    count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    count = max(1, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
     return ["raw_input_name", "description", "from", *[f"actual_signal_name_{index}" for index in range(1, count + 1)]]
 
 
 def build_custom_interface_mapping_headers(actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> list[str]:
-    count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    count = max(1, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
     return ["raw_input_name", *[f"actual_signal_name_{index}" for index in range(1, count + 1)]]
 
 RAW_INPUT_DESCRIPTIONS = {
-    "time_s": "时间轴，单位 s，必须配置且固定排在第一行。",
+    "time_s": "时间轴，单位 s。",
     "vehicle_speed_kph": "车速，单位 kph。",
     "wheel_speed_fl_kph": "左前轮轮速，单位 kph。",
     "wheel_speed_fr_kph": "右前轮轮速，单位 kph。",
@@ -128,6 +152,7 @@ KPI_DEFINITION = {{
     "rule_description": "说明该 KPI 需要满足什么条件才算达标",
     "pass_message": "该 KPI 达标",
     "fail_message": "该 KPI 未达标",
+    "unknown_message": "该 KPI 结果为空时显示的话，可选",
 }}
 
 CALIBRATION = {{
@@ -432,6 +457,8 @@ def calculate_kpi_series(dataframe):
 - 所有可调算法参数都应集中放在 CALIBRATION 区块，放在 KPI_DEFINITION 之后、函数之前；不要把标定量零散写在文件顶部和函数内部。
 - CALIBRATION 里的键名请使用 snake_case，并尽量把物理意义、工况或单位写进名字；每个条目右侧都要写中文注释。
 - pass_condition：通过判断字段，使用 Python 表达式；可直接引用 value、threshold、dataframe、np、pd、math、source_path、source_name、source_stem、analysis_profile、generated_at、mapped_columns。
+- 如果 calculate_kpi 返回 None、NaN 或无穷值，框架会自动把该 KPI 标成“未知”，并使用黄色警告样式；这时不会再继续执行 pass_condition。
+- unknown_message：可选字段，用于覆盖“未知”状态下的提示文案。
 - rule_description：展示给工程人员看的规则描述。
 - dataframe 是标准化后的分析数据表，里面既包含原始标准信号，也包含当前分析所需、已经按依赖顺序算好的派生量。
 - dataframe.attrs["source_name"]：当前分析文件名，例如 demo.csv。
@@ -1235,32 +1262,47 @@ def get_interface_mapping_actual_name_column_count() -> int:
     if not INTERFACE_MAPPING_PATH.exists():
         return DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
     workbook = load_workbook(INTERFACE_MAPPING_PATH)
+    counts = get_interface_mapping_actual_name_column_counts()
+    return max(counts.values())
+
+
+def get_interface_mapping_actual_name_column_counts() -> dict[str, int]:
+    if not INTERFACE_MAPPING_PATH.exists():
+        return {
+            "system": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+            "custom": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+        }
+    workbook = load_workbook(INTERFACE_MAPPING_PATH)
+    counts = {
+        "system": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+        "custom": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+    }
     if INTERFACE_MAPPING_METADATA_SHEET in workbook.sheetnames:
         metadata_sheet = workbook[INTERFACE_MAPPING_METADATA_SHEET]
         for key, value, *_ in metadata_sheet.iter_rows(min_row=1, values_only=True):
-            if str(key or "").strip() == "actual_signal_name_column_count":
+            key_text = str(key or "").strip()
+            if key_text == "system_actual_signal_name_column_count":
                 try:
-                    return max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(value or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+                    counts["system"] = max(1, int(value or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
                 except (TypeError, ValueError):
-                    break
-    max_count = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
-    for sheet_name in [SYSTEM_MAPPING_SHEET, CUSTOM_MAPPING_SHEET]:
-        if sheet_name not in workbook.sheetnames:
-            continue
-        sheet = workbook[sheet_name]
-        header_row = [str(cell or "").strip().lower() for cell in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), [])]
-        actual_count = sum(1 for cell in header_row if cell.startswith("actual_signal_name_"))
-        if actual_count > DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT:
-            extra_column_start = (2 if sheet_name == SYSTEM_MAPPING_SHEET else 1) + DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
-            has_legacy_extra_values = any(
-                str(cell or "").strip()
-                for row in sheet.iter_rows(min_row=2, values_only=True)
-                for cell in row[extra_column_start:]
-            )
-            if not has_legacy_extra_values:
-                actual_count = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
-        max_count = max(max_count, actual_count)
-    return max_count
+                    pass
+            elif key_text == "custom_actual_signal_name_column_count":
+                try:
+                    counts["custom"] = max(1, int(value or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+                except (TypeError, ValueError):
+                    pass
+            elif key_text == "actual_signal_name_column_count":
+                try:
+                    legacy_count = max(1, int(value or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+                    counts["system"] = max(counts["system"], legacy_count)
+                    counts["custom"] = max(counts["custom"], legacy_count)
+                except (TypeError, ValueError):
+                    pass
+    inferred_counts = _infer_interface_mapping_sheet_actual_name_column_counts(workbook)
+    return {
+        "system": max(counts["system"], inferred_counts["system"]),
+        "custom": max(counts["custom"], inferred_counts["custom"]),
+    }
 
 
 def collect_kpi_raw_input_requirements(group_key: str | None = None) -> dict[str, list[str]]:
@@ -1820,7 +1862,16 @@ def _normalize_chart_view_panels(raw_panels: Any) -> list[dict[str, Any]]:
         signals = item.get("signals", [])
         if not isinstance(signals, list):
             continue
-        normalized_panels.append({"signals": [str(signal).strip() for signal in signals if str(signal).strip()]})
+        normalized_signals = [str(signal).strip() for signal in signals if str(signal).strip()]
+        hidden_signals = item.get("hidden_signals", [])
+        if not isinstance(hidden_signals, list):
+            hidden_signals = []
+        normalized_panels.append(
+            {
+                "signals": normalized_signals,
+                "hidden_signals": [str(signal).strip() for signal in hidden_signals if str(signal).strip() in normalized_signals],
+            }
+        )
     return normalized_panels
 
 
@@ -1835,12 +1886,18 @@ def _normalize_chart_view_state(raw: Any) -> dict[str, Any]:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name", "")).strip() or f"工作表 {index}"
-            normalized_sheets.append({"name": name, "panels": _normalize_chart_view_panels(item.get("panels", []))})
+            normalized_sheets.append(
+                {
+                    "name": name,
+                    "signal_table_width": int(item.get("signal_table_width", 220) or 220),
+                    "panels": _normalize_chart_view_panels(item.get("panels", [])),
+                }
+            )
 
     if not normalized_sheets:
         legacy_panels = _normalize_chart_view_panels(raw.get("panels", []))
         if legacy_panels:
-            normalized_sheets.append({"name": "工作表 1", "panels": legacy_panels})
+            normalized_sheets.append({"name": "工作表 1", "signal_table_width": 220, "panels": legacy_panels})
 
     active_sheet = raw.get("active_sheet", 0)
     if not isinstance(active_sheet, int):
@@ -2019,9 +2076,17 @@ def _collect_runtime_raw_inputs() -> dict[str, list[str]]:
     return required_by
 
 
-def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows: list[dict[str, Any]], actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT) -> Path:
+def save_interface_signal_tables(
+    system_rows: list[dict[str, Any]],
+    custom_rows: list[dict[str, Any]],
+    actual_name_column_count: int = DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+    system_actual_name_column_count: int | None = None,
+    custom_actual_name_column_count: int | None = None,
+) -> Path:
     required_by = _collect_runtime_raw_inputs()
-    actual_name_column_count = max(DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    shared_count = max(1, int(actual_name_column_count or DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT))
+    system_actual_name_column_count = max(1, int(system_actual_name_column_count or shared_count))
+    custom_actual_name_column_count = max(1, int(custom_actual_name_column_count or shared_count))
     workbook = Workbook()
     system_sheet = workbook.active
     system_sheet.title = SYSTEM_MAPPING_SHEET
@@ -2030,7 +2095,9 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
     reference_sheet = workbook.create_sheet(REFERENCE_SHEET)
     metadata_sheet = workbook.create_sheet(INTERFACE_MAPPING_METADATA_SHEET)
     metadata_sheet.sheet_state = "hidden"
-    metadata_sheet.append(["actual_signal_name_column_count", actual_name_column_count])
+    metadata_sheet.append(["actual_signal_name_column_count", max(system_actual_name_column_count, custom_actual_name_column_count)])
+    metadata_sheet.append(["system_actual_signal_name_column_count", system_actual_name_column_count])
+    metadata_sheet.append(["custom_actual_signal_name_column_count", custom_actual_name_column_count])
 
     guide_rows = [
         ["用途", "第一个 sheet 为系统自动维护的 KPI 与派生量 raw_inputs 信号，第二个 sheet 为用户自定义扩展信号。"],
@@ -2044,13 +2111,13 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
     _auto_fit_worksheet(guide_sheet)
     _protect_readonly_sheet(guide_sheet)
 
-    def append_rows(sheet, rows: list[dict[str, Any]], headers: list[str], read_only_columns: set[int]) -> None:
+    def append_rows(sheet, rows: list[dict[str, Any]], headers: list[str], read_only_columns: set[int], actual_name_limit: int) -> None:
         sheet.append(headers)
         for entry in rows:
             signal_name = str(entry.get("standard_signal", "")).strip()
             if not signal_name:
                 continue
-            actual_names = _normalize_actual_names(list(entry.get("actual_names", [])))[:actual_name_column_count]
+            actual_names = _normalize_actual_names(list(entry.get("actual_names", [])))[:actual_name_limit]
             row = [signal_name]
             if headers[:3] == ["raw_input_name", "description", "from"]:
                 row.append(RAW_INPUT_DESCRIPTIONS.get(signal_name, str(entry.get("description", "")).strip() or "请补充该输入量的物理意义与单位说明。"))
@@ -2078,7 +2145,13 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
             "description": RAW_INPUT_DESCRIPTIONS.get(signal_name, "请补充该输入量的物理意义与单位说明。"),
             "required_by": sorted(set(required_by.get(signal_name, []))),
         })
-    append_rows(system_sheet, normalized_system_rows, build_system_interface_mapping_headers(actual_name_column_count), read_only_columns={0, 1, 2})
+    append_rows(
+        system_sheet,
+        normalized_system_rows,
+        build_system_interface_mapping_headers(system_actual_name_column_count),
+        read_only_columns={0, 1, 2},
+        actual_name_limit=system_actual_name_column_count,
+    )
 
     filtered_custom_rows = []
     seen_custom: set[str] = set()
@@ -2088,7 +2161,13 @@ def save_interface_signal_tables(system_rows: list[dict[str, Any]], custom_rows:
             continue
         filtered_custom_rows.append({"standard_signal": signal_name, "actual_names": row.get("actual_names", [])})
         seen_custom.add(signal_name)
-    append_rows(custom_sheet, filtered_custom_rows, build_custom_interface_mapping_headers(actual_name_column_count), read_only_columns=set())
+    append_rows(
+        custom_sheet,
+        filtered_custom_rows,
+        build_custom_interface_mapping_headers(custom_actual_name_column_count),
+        read_only_columns=set(),
+        actual_name_limit=custom_actual_name_column_count,
+    )
 
     reference_sheet.append(["raw_input_name", "from"])
     for signal_name in _ordered_raw_input_names(list(required_by)):
@@ -2113,7 +2192,10 @@ def sync_interface_mapping_file() -> Path:
         if SYSTEM_MAPPING_SHEET in workbook.sheetnames and CUSTOM_MAPPING_SHEET in workbook.sheetnames:
             existing_tables = load_interface_signal_tables()
     existing_entries = _read_interface_mapping_workbook() if existing_tables is not None else _read_legacy_interface_mapping()
-    actual_name_column_count = get_interface_mapping_actual_name_column_count() if existing_tables is not None else DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT
+    actual_name_counts = get_interface_mapping_actual_name_column_counts() if existing_tables is not None else {
+        "system": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+        "custom": DEFAULT_INTERFACE_ACTUAL_NAME_COLUMN_COUNT,
+    }
 
     system_rows = []
     required_by = _collect_runtime_raw_inputs()
@@ -2122,7 +2204,13 @@ def sync_interface_mapping_file() -> Path:
         system_rows.append({"standard_signal": signal_name, "actual_names": existing.get("actual_names", [])})
 
     custom_rows = [] if existing_tables is None else existing_tables.get("custom", [])
-    return save_interface_signal_tables(system_rows, custom_rows, actual_name_column_count=actual_name_column_count)
+    return save_interface_signal_tables(
+        system_rows,
+        custom_rows,
+        actual_name_column_count=max(actual_name_counts.values()),
+        system_actual_name_column_count=actual_name_counts["system"],
+        custom_actual_name_column_count=actual_name_counts["custom"],
+    )
 
 
 def _read_interface_mapping_workbook() -> dict[str, dict[str, Any]]:

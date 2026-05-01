@@ -105,10 +105,10 @@ tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
 - 本机当前验证解释器路径：c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe
 - sample_data/tcs_demo.csv 是主样例输入
 - tests/test_dat_tcs.xlsx 是真实 Excel 样例
-- 当前最近一次聚焦回归验证为：pytest tests/test_loaders.py tests/test_engine_pipeline.py，18 项通过
-- 当前最近一次 GUI 离屏冒烟已通过，且包含曲线页 plot area 完整性探针 chart_plot_area_full_enough
+- 当前最近一次聚焦回归验证为：pytest tests/test_editable_configs.py tests/test_engine_pipeline.py tests/test_rule_settings.py，32 项通过
+- 本轮已额外做过离屏定向验证：子框信号 Ctrl+W 局部隐藏/显示、hidden_signals 持久化、接口映射真实信号列可缩减到 1 列，均通过
+- scripts/gui_smoke_check.py 仍是现有 GUI 离屏冒烟入口，但当前不应再把“整套冒烟已通过”写成最新事实
 - 用户机器上仍有“分析后曲线页首次显示可能不完整”的反馈，代码已加入延后布局收尾和切到曲线页主动刷新，但仍需真实机回归确认
-- GUI 离屏冒烟脚本在 scripts/gui_smoke_check.py
 
 ## 不要再写进文档的旧说法
 

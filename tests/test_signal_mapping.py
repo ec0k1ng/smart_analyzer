@@ -83,7 +83,7 @@ class SignalMappingTests(unittest.TestCase):
             with self.assertRaises(SignalMappingError):
                 build_signal_mapping(frame.columns, required_signals=self._minimal_required_signals())
 
-    def test_build_signal_mapping_falls_back_to_exact_standard_column_names(self) -> None:
+    def test_build_signal_mapping_does_not_fallback_to_standard_column_names(self) -> None:
         frame = pd.DataFrame(
             {
                 "time_s": [0.0, 0.1],
@@ -96,11 +96,8 @@ class SignalMappingTests(unittest.TestCase):
         )
 
         with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value={}):
-            mapping = build_signal_mapping(frame.columns, required_signals=self._minimal_required_signals())
-
-        self.assertEqual(mapping["time_s"], "time_s")
-        self.assertEqual(mapping["vehicle_speed_kph"], "vehicle_speed")
-        self.assertEqual(mapping["tcs_active"], "tcs_active")
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(frame.columns, required_signals=self._minimal_required_signals())
 
     def test_manual_interface_mapping_overrides_aliases(self) -> None:
         columns = [
@@ -143,7 +140,7 @@ class SignalMappingTests(unittest.TestCase):
         self.assertIn("custom_slip_trace", normalized.columns)
         self.assertListEqual(normalized["custom_slip_trace"].tolist(), [0.2, 0.4])
 
-    def test_wheel_specific_tcs_signal_can_satisfy_tcs_active_and_be_normalized(self) -> None:
+    def test_normalize_signals_can_fill_tcs_active_from_wheel_specific_columns(self) -> None:
         frame = pd.DataFrame(
             {
                 "time": [0.0, 0.1],
@@ -165,7 +162,10 @@ class SignalMappingTests(unittest.TestCase):
         }
 
         with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
-            mapping = build_signal_mapping(frame.columns, required_signals=self._minimal_required_signals())
+            mapping = build_signal_mapping(
+                frame.columns,
+                required_signals=["time_s", "wheel_speed_rl_kph", "wheel_speed_rr_kph", "vehicle_speed_kph", "longitudinal_accel_mps2", "tcs_active_fl"],
+            )
             normalized = normalize_signals(frame, mapping)
 
         self.assertEqual(mapping["tcs_active_fl"], "TcsActiv(1)")
@@ -200,6 +200,76 @@ class SignalMappingTests(unittest.TestCase):
             with self.assertRaises(SignalMappingError):
                 build_signal_mapping(columns, required_signals=["time_s", "tcs_active_fl"])
 
+    def test_default_alias_style_mapping_does_not_fallback_to_sample_headers(self) -> None:
+        columns = [
+            "time",
+            "SpdVeh",
+            "SpdWhl(1)",
+            "SpdWhl(2)",
+            "SpdWhl(3)",
+            "SpdWhl(4)",
+            "AgWhlTar(1)",
+            "Lgt",
+            "YawRate",
+            "SteerTar",
+            "TcsActiv(1)",
+            "TcsActiv(2)",
+            "TcsActiv(3)",
+            "TcsActiv(4)",
+        ]
+        interface_mapping = {
+            "time_s": {"manual_column": "time", "actual_names": ["time"]},
+            "vehicle_speed_kph": {"manual_column": "vehicle_speed", "actual_names": ["vehicle_speed"]},
+            "wheel_speed_fl_kph": {"manual_column": "wheel_speed_fl", "actual_names": ["wheel_speed_fl"]},
+            "wheel_speed_fr_kph": {"manual_column": "wheel_speed_fr", "actual_names": ["wheel_speed_fr"]},
+            "wheel_speed_rl_kph": {"manual_column": "wheel_speed_rl", "actual_names": ["wheel_speed_rl"]},
+            "wheel_speed_rr_kph": {"manual_column": "wheel_speed_rr", "actual_names": ["wheel_speed_rr"]},
+            "accel_pedal_pct": {"manual_column": "accel_pedal_pct", "actual_names": ["accel_pedal_pct"]},
+            "longitudinal_accel_mps2": {"manual_column": "longitudinal_accel_mps2", "actual_names": ["longitudinal_accel_mps2"]},
+            "yaw_rate_degps": {"manual_column": "yawrate", "actual_names": ["yawrate"]},
+            "steering_wheel_angle_deg": {"manual_column": "steering_wheel_angle_deg", "actual_names": ["steering_wheel_angle_deg"]},
+            "tcs_active_fl": {"manual_column": "tcs_active", "actual_names": ["tcs_active"]},
+            "tcs_active_fr": {"manual_column": "tcs_active", "actual_names": ["tcs_active"]},
+            "tcs_active_rl": {"manual_column": "tcs_active", "actual_names": ["tcs_active"]},
+            "tcs_active_rr": {"manual_column": "tcs_active", "actual_names": ["tcs_active"]},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(
+                    columns,
+                    required_signals=[
+                        "time_s",
+                        "vehicle_speed_kph",
+                        "wheel_speed_fl_kph",
+                        "wheel_speed_fr_kph",
+                        "wheel_speed_rl_kph",
+                        "wheel_speed_rr_kph",
+                        "accel_pedal_pct",
+                        "longitudinal_accel_mps2",
+                        "yaw_rate_degps",
+                        "steering_wheel_angle_deg",
+                        "tcs_active_fl",
+                        "tcs_active_fr",
+                        "tcs_active_rl",
+                        "tcs_active_rr",
+                    ],
+                )
+
+    def test_explicit_missing_signal_name_is_reported_directly(self) -> None:
+        columns = ["time_s", "vehicle_speed", "accel_pedal_pct", "longitudinal_accel_mps2", "tcs_active"]
+        interface_mapping = {
+            "yaw_rate_degps": {
+                "manual_column": "yaw_rate_degps",
+                "actual_names": ["yaw_rate_degps"],
+                "source_sheet": "系统信号",
+            }
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(columns, required_signals=["yaw_rate_degps"])
+
     def test_explicit_manual_time_mapping_does_not_match_pandas_mangled_duplicate_column(self) -> None:
         columns = ["time", "time.1", "time.2"]
         interface_mapping = {
@@ -218,9 +288,42 @@ class SignalMappingTests(unittest.TestCase):
         }
 
         with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
-            mapping = build_signal_mapping(columns, required_signals=["time_s", "vehicle_speed_kph"])
+            mapping = build_signal_mapping(
+                columns,
+                required_signals=["time_s", "vehicle_speed_kph"],
+                source_column_redirects={"time": "time_s"},
+                source_columns_before_time_normalization=["time", "vehicle_speed"],
+            )
 
         self.assertEqual(mapping["time_s"], "time_s")
+
+    def test_wrong_manual_time_s_name_does_not_match_loader_normalized_time_column(self) -> None:
+        columns = ["time_s", "vehicle_speed"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time_s"},
+            "vehicle_speed_kph": {"manual_column": "vehicle_speed"},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            with self.assertRaises(SignalMappingError):
+                build_signal_mapping(
+                    columns,
+                    required_signals=["time_s", "vehicle_speed_kph"],
+                    source_column_redirects={"time": "time_s"},
+                    source_columns_before_time_normalization=["time", "vehicle_speed"],
+                )
+
+    def test_manual_mapping_uses_left_to_right_priority(self) -> None:
+        columns = ["BackupSpeed", "PrimarySpeed", "time_s"]
+        interface_mapping = {
+            "time_s": {"manual_column": "time_s"},
+            "vehicle_speed_kph": {"actual_names": ["MissingSpeed", "BackupSpeed", "PrimarySpeed"]},
+        }
+
+        with patch("tcs_smart_analyzer.core.signal_mapping.load_interface_mapping", return_value=interface_mapping):
+            mapping = build_signal_mapping(columns, required_signals=["time_s", "vehicle_speed_kph"])
+
+        self.assertEqual(mapping["vehicle_speed_kph"], "BackupSpeed")
 
     def test_manual_mapping_can_use_formula_expression(self) -> None:
         frame = pd.DataFrame(

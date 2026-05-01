@@ -26,10 +26,10 @@ KPI_DEFINITION = {
 }
 
 CALIBRATION = {
-    "filter_low_hz": 0.4,
-    "filter_high_hz": 100.0,
-    "nyquist_margin_ratio": 0.99,
-    "rms_window_s": 1.0,
+    "filter_low_hz": 0.4,  # 带通滤波下限频率，单位 Hz，用于滤除极低频姿态变化。
+    "filter_high_hz": 100.0,  # 带通滤波上限频率，单位 Hz，用于抑制高频噪声。
+    "nyquist_margin_ratio": 0.99,  # 高通上限相对奈奎斯特频率的安全裕度，避免截止频率贴边失稳。
+    "rms_window_s": 1.0,  # 趋势曲线滑动 RMS 窗长，单位 s。
 }
 
 

@@ -21,7 +21,7 @@ c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe 
 ### 2.2 GUI 离屏冒烟
 
 ```powershell
-c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe scripts/gui_smoke_check.py
+$env:QT_QPA_PLATFORM='offscreen'; c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe scripts/gui_smoke_check.py
 ```
 
 ### 2.3 UI/核心语法检查
@@ -61,8 +61,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 
 本轮实际执行结果：
 
-- pytest tests/test_signal_mapping.py tests/test_editable_configs.py tests/test_engine_pipeline.py tests/test_rule_settings.py：44 项全部通过
-- py_compile：main_window.py、signal_mapping.py、editable_configs.py、打滑量派生量文件与新增 KPI 文件通过
+- pytest tests/test_editable_configs.py tests/test_engine_pipeline.py tests/test_rule_settings.py：32 项全部通过
+- get_errors：main_window.py、editable_configs.py 无错误
+- 离屏定向验证：子框信号 Ctrl+W 局部隐藏/显示、hidden_signals 持久化、接口映射真实信号列可缩减到 1 列，均通过
 
 当前新增覆盖重点包括：
 
@@ -80,6 +81,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1
 窗口态验证边界：
 
 - 已完成窗口状态切换与主窗口 resize 触发的曲线页重建修复，并通过语法与聚焦回归验证。
+- scripts/gui_smoke_check.py 仍可作为 GUI 冒烟入口，但当前未重新刷到整套通过结论。
 - 本轮未重新执行真实桌面环境下的手动 GUI 回归，因此最大化/恢复后的最终交互体验仍建议在用户机器上做一次手测确认。
 
 ### 3.2 本轮未重新执行

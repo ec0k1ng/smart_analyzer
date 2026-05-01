@@ -27,7 +27,7 @@ KPI_DEFINITION = {
 }
 
 CALIBRATION = {
-    "full_brake_depth_threshold_pct": 90.0,
+    "full_brake_depth_threshold_pct": 90.0,  # 识别全制动工况的制动深度阈值，单位 %。
 }
 
 

@@ -23,17 +23,18 @@ from tcs_smart_analyzer.core.features import (
     calculate_global_kpis,
 )
 from tcs_smart_analyzer.core.models import AnalysisContext, AnalysisResult
-from tcs_smart_analyzer.core.signal_mapping import build_signal_mapping, normalize_signals, resolve_requested_signal_names
-from tcs_smart_analyzer.data.loaders import SUPPORTED_FILE_TYPES, load_timeseries_file
+from tcs_smart_analyzer.core.signal_mapping import MAPPING_EXPRESSION_PREFIX, build_signal_mapping, describe_mapping_candidates, list_source_columns_for_mapping, normalize_signals, resolve_requested_signal_names
+from tcs_smart_analyzer.data.loaders import SUPPORTED_FILE_TYPES, inspect_timeseries_file_columns, load_timeseries_file
 from tcs_smart_analyzer.data.resampler import detect_and_resample
 
 
 class AnalysisEngine:
-    def __init__(self, settings: AnalysisSettings | None = None, kpi_group_key: str | None = None, runtime_logger=None) -> None:
+    def __init__(self, settings: AnalysisSettings | None = None, kpi_group_key: str | None = None, runtime_logger=None, progress_callback=None) -> None:
         sync_interface_mapping_file()
         self.settings = settings or load_analysis_settings()
         self.kpi_group_key = kpi_group_key
         self.runtime_logger = runtime_logger
+        self.progress_callback = progress_callback
         self.invalid_runtime_issues: list[ConfigValidationIssue] = []
         self._load_runtime_components()
 
@@ -152,12 +153,13 @@ class AnalysisEngine:
         return resolved
 
     def _build_required_raw_input_signals(self) -> list[str]:
-        required_signals = {
+        required_signals = {"time_s"}
+        required_signals.update({
             str(signal_name).strip()
             for definition in self.kpi_definitions
             for signal_name in definition.get("raw_inputs", [])
             if str(signal_name).strip()
-        }
+        })
         for definition in self.derived_signal_definitions:
             for signal_name in definition.get("raw_inputs", []):
                 normalized_name = str(signal_name).strip()
@@ -165,34 +167,139 @@ class AnalysisEngine:
                     required_signals.add(normalized_name)
         return sorted(required_signals)
 
+    def _emit_runtime_log(self, level: str, message: str) -> None:
+        if callable(self.runtime_logger):
+            self.runtime_logger(level, message)
+
+    def _emit_progress(self, fraction: float, message: str) -> None:
+        if callable(self.progress_callback):
+            self.progress_callback(float(fraction), message)
+
+    @staticmethod
+    def _mapping_log_display_name(column_name: str, source_column_redirects: dict[str, str] | None = None) -> str:
+        display_column = str(column_name)
+        if display_column.startswith(MAPPING_EXPRESSION_PREFIX):
+            return display_column[len(MAPPING_EXPRESSION_PREFIX):]
+        redirects = {
+            str(source).strip(): str(target).strip()
+            for source, target in (source_column_redirects or {}).items()
+            if str(source).strip() and str(target).strip()
+        }
+        inverse_redirects = {target: source for source, target in redirects.items()}
+        return inverse_redirects.get(display_column, display_column)
+
     def analyze_file(self, file_path: str | Path, kpi_group_key: str | None = None) -> AnalysisResult:
         if kpi_group_key != self.kpi_group_key:
             self.reload_runtime_definitions(kpi_group_key=kpi_group_key)
         source_path = Path(file_path)
         generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
-        dataframe = load_timeseries_file(
-            source_path,
-            required_signals=resolve_requested_signal_names(self.required_raw_input_signals),
+        self._emit_runtime_log("debug", f"开始分析文件: {source_path.name}")
+        requested_signal_names = resolve_requested_signal_names(self.required_raw_input_signals)
+        mapping_candidates = describe_mapping_candidates(self.required_raw_input_signals)
+        mapping: dict[str, str] | None = None
+        dataframe: pd.DataFrame
+        if source_path.suffix.lower() in {".csv", ".xlsx", ".xls"}:
+            self._emit_progress(0.08, f"分析中 {source_path.name} - 初步预映射")
+            self._emit_runtime_log("debug", f"确认所需信号完成: 共 {len(self.required_raw_input_signals)} 项")
+            for standard_name, candidate_names in mapping_candidates.items():
+                display_candidates = []
+                for candidate in candidate_names:
+                    candidate_text = str(candidate).strip()
+                    if candidate_text.startswith(MAPPING_EXPRESSION_PREFIX):
+                        candidate_text = candidate_text[len(MAPPING_EXPRESSION_PREFIX):]
+                    display_candidates.append(candidate_text)
+                self._emit_runtime_log("debug", f"初步预映射: {standard_name} <- {' | '.join(display_candidates)}")
+
+            inspected = inspect_timeseries_file_columns(source_path)
+            if inspected is None:
+                raise ValueError(f"无法读取文件表头以确认实际映射: {source_path.name}")
+            header_columns, original_columns, source_column_redirects = inspected
+            self._emit_progress(0.16, f"分析中 {source_path.name} - 确认实际映射")
+            mapping = build_signal_mapping(
+                header_columns,
+                self.required_raw_input_signals,
+                source_column_redirects=source_column_redirects,
+                source_columns_before_time_normalization=original_columns,
+            )
+            self._emit_runtime_log("debug", f"接口映射确认完成: 已从实际数据中命中 {len(mapping)} 个信号")
+            for standard_name, column_name in mapping.items():
+                display_column = self._mapping_log_display_name(column_name, source_column_redirects=source_column_redirects)
+                self._emit_runtime_log("debug", f"接口映射: {standard_name} -> {display_column}")
+
+            selected_source_columns = list_source_columns_for_mapping(mapping, source_column_redirects=source_column_redirects)
+            self._emit_runtime_log(
+                "debug",
+                f"将只读取最终命中的 {len(selected_source_columns)} 个原始列: {', '.join(selected_source_columns[:20])}{' ...' if len(selected_source_columns) > 20 else ''}",
+            )
+            self._emit_progress(0.24, f"分析中 {source_path.name} - 读取已确认信号列")
+            self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
+            dataframe = load_timeseries_file(
+                source_path,
+                required_signals=requested_signal_names,
+                selected_source_columns=selected_source_columns,
+            )
+        else:
+            self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
+            self._emit_progress(0.18, f"分析中 {source_path.name} - 读取数据文件")
+            dataframe = load_timeseries_file(
+                source_path,
+                required_signals=requested_signal_names,
+            )
+        self._emit_runtime_log(
+            "debug",
+            f"读取完成: {source_path.name}，共 {len(dataframe)} 行、{len(dataframe.columns)} 列，列名: {', '.join(map(str, list(dataframe.columns)[:12]))}{' ...' if len(dataframe.columns) > 12 else ''}",
         )
         dataframe.attrs["source_path"] = str(source_path)
         dataframe.attrs["source_name"] = source_path.name
         dataframe.attrs["source_stem"] = source_path.stem
         dataframe.attrs["analysis_profile"] = self.settings.profile_name
         dataframe.attrs["generated_at"] = generated_at
-        mapping = build_signal_mapping(dataframe.columns, self.required_raw_input_signals)
+        self._emit_progress(0.28, f"分析中 {source_path.name} - 校验接口映射")
+        mapping = mapping or build_signal_mapping(
+            dataframe.columns,
+            self.required_raw_input_signals,
+            source_column_redirects=dict(dataframe.attrs.get("source_column_redirects", {})),
+            source_columns_before_time_normalization=dataframe.attrs.get("source_columns_before_time_normalization", dataframe.columns),
+        )
+        if source_path.suffix.lower() not in {".csv", ".xlsx", ".xls"}:
+            self._emit_runtime_log("debug", f"接口映射完成: 已命中 {len(mapping)} 个信号")
+            for standard_name, column_name in mapping.items():
+                display_column = self._mapping_log_display_name(
+                    column_name,
+                    source_column_redirects=dict(dataframe.attrs.get("source_column_redirects", {})),
+                )
+                self._emit_runtime_log("debug", f"接口映射: {standard_name} -> {display_column}")
+
+        self._emit_progress(0.38, f"分析中 {source_path.name} - 标准化信号")
         dataframe.attrs["mapped_columns"] = dict(mapping)
         normalized = normalize_signals(dataframe, mapping)
+        self._emit_runtime_log("debug", f"信号标准化完成: 当前 {len(normalized)} 行、{len(normalized.columns)} 列")
         normalized.attrs.update(dataframe.attrs)
+        self._emit_progress(0.5, f"分析中 {source_path.name} - 时间轴处理")
         normalized = detect_and_resample(normalized, time_column="time_s")
+        self._emit_runtime_log("debug", f"时间轴检查/重采样完成: 当前 {len(normalized)} 行")
         normalized.attrs.update(dataframe.attrs)
+        if self.derived_signal_definitions:
+            self._emit_runtime_log(
+                "debug",
+                f"开始计算派生量: {', '.join(str(item.get('name', '')) for item in self.derived_signal_definitions[:12] if str(item.get('name', '')).strip())}{' ...' if len(self.derived_signal_definitions) > 12 else ''}",
+            )
+        self._emit_progress(0.64, f"分析中 {source_path.name} - 计算派生量")
         normalized = attach_derived_signal_columns(
             normalized,
             self.kpi_definitions,
             self.derived_signal_plugins,
             runtime_logger=self.runtime_logger,
         )
+        self._emit_runtime_log("debug", f"派生量计算完成: 当前 {len(normalized.columns)} 列")
         normalized.attrs.update(dataframe.attrs)
+        self._emit_runtime_log("debug", f"开始计算 KPI: 共 {len(self.kpi_definitions)} 项")
+        self._emit_progress(0.8, f"分析中 {source_path.name} - 计算 KPI")
         kpis = calculate_global_kpis(normalized, self.settings, self.kpi_plugins, runtime_logger=self.runtime_logger)
+        pass_count = sum(1 for item in kpis if item.status == "pass")
+        warning_count = sum(1 for item in kpis if item.status == "warning")
+        fail_count = sum(1 for item in kpis if item.status == "fail")
+        self._emit_runtime_log("debug", f"KPI 计算完成: 达标 {pass_count}，未知 {warning_count}，未达标 {fail_count}")
         normalized = attach_signal_library_columns(normalized, kpis)
         normalized.attrs.update(dataframe.attrs)
 
@@ -213,6 +320,10 @@ class AnalysisEngine:
         )
 
         rule_results = build_rule_results_from_kpis(kpis)
+        self._emit_runtime_log("debug", f"规则结果生成完成: 共 {len(rule_results)} 条")
+        self._emit_progress(0.94, f"分析中 {source_path.name} - 生成结果")
+        self._emit_runtime_log("debug", f"文件分析结束: {source_path.name}")
+        self._emit_progress(1.0, f"分析完成 {source_path.name}")
 
         return AnalysisResult(
             context=context,

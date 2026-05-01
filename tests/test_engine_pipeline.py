@@ -29,6 +29,10 @@ class EnginePipelineTests(unittest.TestCase):
                 {"standard_signal": "torque_request_nm", "actual_names": ["torque_request_nm"]},
                 {"standard_signal": "torque_actual_nm", "actual_names": ["torque_actual_nm"]},
                 {"standard_signal": "longitudinal_accel_mps2", "actual_names": ["longitudinal_accel_mps2"]},
+                {"standard_signal": "abs_active_fl", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_fr", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_rl", "actual_names": ["time_s*0"]},
+                {"standard_signal": "abs_active_rr", "actual_names": ["time_s*0"]},
                 {"standard_signal": "yaw_rate_degps", "actual_names": ["yawrate"]},
                 {"standard_signal": "steering_wheel_angle_deg", "actual_names": ["steering_wheel_angle_deg"]},
                 {"standard_signal": "tcs_active", "actual_names": ["tcs_active"]},
@@ -157,6 +161,60 @@ def calculate_kpi_series(dataframe):
 
             self.assertTrue(any(level == "info" and "temp_print_logger_kpi:calculate_kpi" in message for level, message in captured_logs))
             self.assertTrue(any(level == "info" and "temp_print_logger_kpi:calculate_kpi_series" in message for level, message in captured_logs))
+        finally:
+            if temp_kpi_path.exists():
+                temp_kpi_path.unlink()
+
+    def test_nan_kpi_value_is_reported_as_unknown_warning(self) -> None:
+        demo_file = self._create_demo_input_file()
+        config_paths = get_config_file_paths()
+        temp_kpi_path = config_paths["kpi_specs_dir"] / "temp_unknown_kpi.py"
+        temp_kpi_path.write_text(
+            '''from __future__ import annotations
+
+IS_TEMPLATE = False
+
+import math
+import pandas as pd
+
+KPI_DEFINITION = {
+    "name": "temp_unknown_kpi",
+    "title": "未知状态测试KPI",
+    "raw_inputs": ["vehicle_speed_kph"],
+    "derived_inputs": [],
+    "trend_source": "temp_unknown_kpi",
+    "unit": "kph",
+    "description": "验证空值 KPI 会进入未知状态。",
+    "threshold": 1.0,
+    "source": "test",
+    "pass_condition": "value <= threshold",
+    "rule_description": "test",
+    "pass_message": "pass",
+    "fail_message": "fail",
+    "unknown_message": "unknown",
+}
+
+def calculate_kpi(dataframe):
+    return math.nan
+
+def calculate_kpi_series(dataframe):
+    return pd.Series([math.nan] * len(dataframe), index=dataframe.index)
+''',
+            encoding="utf-8",
+        )
+        try:
+            engine = AnalysisEngine(kpi_group_key="__all_kpis__")
+            result = engine.analyze_file(demo_file)
+
+            unknown_kpi = next(item for item in result.kpis if item.name == "temp_unknown_kpi")
+            self.assertIsNone(unknown_kpi.value)
+            self.assertEqual(unknown_kpi.status, "warning")
+            self.assertEqual(unknown_kpi.result_label, "未知")
+            self.assertEqual(unknown_kpi.assessment_message, "unknown")
+            unknown_rule = next(item for item in result.rule_results if item.rule_id == "temp_unknown_kpi")
+            self.assertEqual(unknown_rule.status, "warning")
+            summary = AnalysisEngine.summarize_analysis(result)
+            self.assertGreaterEqual(summary["warning_count"], 1)
         finally:
             if temp_kpi_path.exists():
                 temp_kpi_path.unlink()

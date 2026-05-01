@@ -16,8 +16,8 @@ except ImportError:  # pragma: no cover - fallback when optional dependency is m
     lazy_pinyin = None
 
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PySide6.QtCore import QEvent, QMargins, QMimeData, QPoint, QPointF, QRect, QRectF, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QDrag, QKeySequence, QMouseEvent, QPainter, QPen, QShortcut, QTextCharFormat, QTextCursor, QTextDocument, QTextFormat, QWheelEvent
+from PySide6.QtCore import QEvent, QEventLoop, QFileSystemWatcher, QMargins, QMimeData, QPoint, QPointF, QRect, QRectF, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QDrag, QFont, QKeySequence, QMouseEvent, QPainter, QPen, QShortcut, QTextCharFormat, QTextCursor, QTextDocument, QTextFormat, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QTextEdit,
     QToolButton,
+    QStyledItemDelegate,
     QVBoxLayout,
     QWidget,
     QRubberBand,
@@ -66,8 +67,9 @@ from tcs_smart_analyzer.config import (
     delete_config_file,
     extract_derived_signal_name_from_text,
     extract_kpi_name_from_text,
+    get_config_file_paths,
     get_plot_signal_names,
-    get_interface_mapping_actual_name_column_count,
+    get_interface_mapping_actual_name_column_counts,
     list_derived_signal_spec_entries,
     list_kpi_spec_entries,
     load_chart_view_state,
@@ -101,6 +103,7 @@ QUEUE_GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
 QUEUE_HEADER_ROLE = Qt.ItemDataRole.UserRole + 2
 RESULT_ROW_KIND_ROLE = Qt.ItemDataRole.UserRole + 20
 RESULT_ROW_PATH_ROLE = Qt.ItemDataRole.UserRole + 21
+PANEL_SIGNAL_BASE_COLOR_ROLE = Qt.ItemDataRole.UserRole + 22
 PROTECTED_DERIVED_FILES = {"00_example_and_guide.py"}
 PROTECTED_KPI_FILES = {"00_example_and_guide.py"}
 PROTECTED_TEMPLATE_FILES = {"00_example_and_guide.html"}
@@ -110,42 +113,43 @@ APP_STYLE = """
     font-family: "Microsoft YaHei UI", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 QMainWindow {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e8f0fe, stop:0.4 #f0f4fa, stop:0.7 #f5f8fc, stop:1 #eaf5f0);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #e7eef8, stop:0.38 #eff5fb, stop:0.72 #f7fafd, stop:1 #eef6f2);
 }
 QGroupBox {
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #dce6f0;
-    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #d7e2ee;
+    border-radius: 18px;
     margin-top: 12px;
     padding-top: 18px;
     color: #1a3553;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 12px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 16px;
-    padding: 2px 8px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 8px;
+    padding: 3px 10px;
+    background: rgba(248, 251, 255, 0.98);
+    border: 1px solid #e2eaf3;
+    border-radius: 9px;
 }
 QPushButton, QToolButton {
     min-height: 32px;
     border-radius: 10px;
-    border: 1px solid #c5d3e3;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f0f5fc);
+    border: 1px solid #bfd0e1;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #eef4fb);
     padding: 2px 14px;
     color: #1a3553;
-    font-weight: 500;
+    font-weight: 600;
     font-size: 12px;
 }
 QPushButton:hover, QToolButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8fbff, stop:1 #e5eef9);
-    border-color: #7aade4;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fbfdff, stop:1 #e4eef9);
+    border-color: #76a5d8;
 }
 QPushButton:pressed, QToolButton:pressed {
-    background: #d4e4f7;
-    border-color: #5c9ad8;
+    background: #d9e8f8;
+    border-color: #4f86c4;
 }
 QPushButton:disabled {
     color: #a0b0c0;
@@ -153,16 +157,16 @@ QPushButton:disabled {
     border-color: #dde3ea;
 }
 QLineEdit, QComboBox, QListWidget, QTableWidget, QPlainTextEdit, QTextEdit {
-    background: #ffffff;
-    border: 1px solid #d0dbe7;
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid #ccd8e5;
+    border-radius: 10px;
     padding: 4px 8px;
-    selection-background-color: #cde2fa;
+    selection-background-color: #c5defb;
     selection-color: #13324e;
     font-size: 12px;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
-    border: 1.5px solid #6ea8e0;
+    border: 1.5px solid #5f97cf;
     background: #fafcff;
 }
 QComboBox::drop-down {
@@ -203,12 +207,12 @@ QTabBar::tab:hover:!selected {
     color: #1a3553;
 }
 QHeaderView::section {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f4f8fc, stop:1 #eaf0f7);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f6f9fd, stop:1 #e9f0f7);
     border: none;
     border-bottom: 1.5px solid #cddaea;
     border-right: 1px solid #e2eaf3;
     padding: 8px 10px;
-    color: #1a3553;
+    color: #24415f;
     font-weight: 600;
     font-size: 11px;
 }
@@ -304,25 +308,25 @@ QTextBrowser {
 
 TOOL_BUTTON_STYLE = """
 QToolButton {
-    min-width: 30px;
-    max-width: 30px;
-    min-height: 30px;
-    max-height: 30px;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
     padding: 0;
     font-size: 14px;
     font-weight: 700;
-    border-radius: 8px;
-    border: 1px solid #c5d3e3;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f0f5fc);
+    border-radius: 10px;
+    border: 1px solid #bfd0e1;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #eef4fb);
     color: #1a3553;
 }
 QToolButton:hover {
-    border-color: #7aade4;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8fbff, stop:1 #e5eef9);
+    border-color: #76a5d8;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fbfdff, stop:1 #e4eef9);
 }
 QToolButton:pressed {
-    background: #d4e4f7;
-    border-color: #5c9ad8;
+    background: #d9e8f8;
+    border-color: #4f86c4;
 }
 QToolButton:checked {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563eb, stop:1 #1d4ed8);
@@ -924,12 +928,14 @@ class SearchReplaceBar(QWidget):
 
 
 class PanelSignalTable(QTableWidget):
-    def __init__(self, panel_id: int, remove_callback, color_callback, drop_callback, parent: QWidget | None = None) -> None:
+    def __init__(self, panel_id: int, remove_callback, color_callback, drop_callback, selection_changed_callback=None, parent: QWidget | None = None) -> None:
         super().__init__(0, 3, parent)
         self._panel_id = panel_id
         self._remove_callback = remove_callback
         self._color_callback = color_callback
         self._drop_callback = drop_callback
+        self._selection_changed_callback = selection_changed_callback
+        self._hidden_signals: set[str] = set()
         self.setHorizontalHeaderLabels(["信号", "光标1", "光标2"])
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -957,9 +963,13 @@ class PanelSignalTable(QTableWidget):
             "QTableWidget { border: none; background: transparent; }"
             "QHeaderView::section { padding: 1px 2px; border: none; background: rgba(238, 245, 252, 0.18); color: #627588; }"
             "QTableWidget::item { padding: 0 1px; }"
-            "QTableWidget::item:selected { background: rgba(198, 221, 243, 0.34); color: #0f2740; }"
         )
+        self.itemSelectionChanged.connect(self._handle_selection_changed)
         self.set_cursor_column_visibility(0)
+
+    @property
+    def panel_id(self) -> int:
+        return self._panel_id
 
     def set_cursor_column_visibility(self, cursor_mode: int) -> None:
         show_cursor_1 = cursor_mode >= 1
@@ -975,6 +985,19 @@ class PanelSignalTable(QTableWidget):
         scrollbar_width = self.verticalScrollBar().sizeHint().width() if self.verticalScrollBar().isVisible() else 0
         desired = visible_width + scrollbar_width + self.frameWidth() * 2 + 18
         return max(self.minimumWidth(), min(self.maximumWidth(), desired))
+
+    def set_hidden_signals(self, signal_names: list[str] | set[str]) -> None:
+        self._hidden_signals = {str(signal_name).strip() for signal_name in signal_names if str(signal_name).strip()}
+        self._refresh_row_styles()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.itemAt(event.position().toPoint()) is None:
+            self.clearSelection()
+            self.setCurrentCell(-1, -1)
+            self._handle_selection_changed()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Delete:
@@ -1039,12 +1062,51 @@ class PanelSignalTable(QTableWidget):
                 signal_names.append(item.text().strip())
         return signal_names
 
+    def _handle_selection_changed(self) -> None:
+        self._refresh_row_styles()
+        if callable(self._selection_changed_callback):
+            self._selection_changed_callback(self._panel_id)
+
+    def _refresh_row_styles(self) -> None:
+        selected_rows = {index.row() for index in self.selectedIndexes()}
+        for row_index in range(self.rowCount()):
+            signal_item = self.item(row_index, 0)
+            signal_name = "" if signal_item is None else signal_item.text().strip()
+            is_selected = row_index in selected_rows
+            is_hidden = signal_name in self._hidden_signals
+            base_color = signal_item.data(PANEL_SIGNAL_BASE_COLOR_ROLE) if signal_item is not None else None
+            if not isinstance(base_color, QColor):
+                base_color = QColor("#1f3b57")
+            for column_index in range(self.columnCount()):
+                item = self.item(row_index, column_index)
+                if item is None:
+                    continue
+                font = item.font()
+                font.setBold(is_selected)
+                font.setWeight(QFont.Weight.DemiBold if is_selected else QFont.Weight.Normal)
+                font.setStrikeOut(is_hidden and column_index == 0)
+                item.setFont(font)
+                if column_index == 0:
+                    color = QColor(base_color)
+                    if is_hidden:
+                        color.setAlpha(110)
+                else:
+                    color = QColor("#64748b" if is_hidden else "#31475d")
+                item.setForeground(color)
+                if is_selected:
+                    item.setBackground(QColor("#b9d7fb" if not is_hidden else "#d3dfec"))
+                elif is_hidden:
+                    item.setBackground(QColor("#f3f6f9"))
+                else:
+                    item.setBackground(QColor(0, 0, 0, 0))
+
 
 class MappingEditorTable(QTableWidget):
     def __init__(self, read_only_columns: set[int] | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._read_only_columns = set(read_only_columns or set())
         self._after_paste_callback = None
+        self._delete_selected_columns_callback = None
 
     def keyPressEvent(self, event) -> None:  # noqa: ANN001
         if event.matches(QKeySequence.StandardKey.Copy):
@@ -1056,10 +1118,34 @@ class MappingEditorTable(QTableWidget):
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Delete:
+            selected_columns = self._selected_full_editable_columns()
+            if selected_columns and callable(self._delete_selected_columns_callback):
+                self._delete_selected_columns_callback(selected_columns)
+                event.accept()
+                return
             if self._clear_selected_cells():
                 event.accept()
                 return
         super().keyPressEvent(event)
+
+    def _selected_full_editable_columns(self) -> list[int]:
+        indexes = self.selectedIndexes()
+        if not indexes or self.rowCount() <= 0:
+            return []
+        selected_by_column: dict[int, set[int]] = {}
+        for index in indexes:
+            if index.column() in self._read_only_columns:
+                continue
+            selected_by_column.setdefault(index.column(), set()).add(index.row())
+        if not selected_by_column:
+            return []
+        all_rows = set(range(self.rowCount()))
+        columns: list[int] = []
+        for column_index, rows in selected_by_column.items():
+            if rows != all_rows:
+                return []
+            columns.append(column_index)
+        return sorted(columns)
 
     def _copy_selection_to_clipboard(self) -> None:
         ranges = self.selectedRanges()
@@ -1109,6 +1195,28 @@ class MappingEditorTable(QTableWidget):
         self.viewport().update()
         return True
 
+
+class MappingCellDelegate(QStyledItemDelegate):
+    def createEditor(self, parent, option, index):  # noqa: ANN001
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            editor.setFrame(False)
+            editor.setContentsMargins(0, 0, 0, 0)
+            editor.setStyleSheet(
+                "QLineEdit {"
+                "padding: 0 4px;"
+                "margin: 0;"
+                "border: 1px solid #5f97cf;"
+                "border-radius: 0;"
+                "background: #ffffff;"
+                "min-height: 0px;"
+                "}"
+            )
+        return editor
+
+    def updateEditorGeometry(self, editor, option, index) -> None:  # noqa: ANN001
+        editor.setGeometry(option.rect)
+
     def _clear_selected_cells(self) -> bool:
         indexes = self.selectedIndexes()
         if not indexes:
@@ -1132,11 +1240,12 @@ class MappingEditorTable(QTableWidget):
 
 
 class InteractiveChartView(QChartView):
-    def __init__(self, cursor_move_callback, signal_drop_callback, x_range_sync_callback=None, parent: QWidget | None = None) -> None:
+    def __init__(self, cursor_move_callback, signal_drop_callback, x_range_sync_callback=None, background_click_callback=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._cursor_move_callback = cursor_move_callback
         self._signal_drop_callback = signal_drop_callback
         self._x_range_sync_callback = x_range_sync_callback
+        self._background_click_callback = background_click_callback
         self._last_pan_position: QPoint | None = None
         self._right_drag_origin: QPoint | None = None
         self._x_bounds: tuple[float, float] | None = None
@@ -1360,6 +1469,8 @@ class InteractiveChartView(QChartView):
                 self.setCursor(Qt.CursorShape.SizeHorCursor)
                 event.accept()
                 return
+            if callable(self._background_click_callback):
+                self._background_click_callback()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -1547,6 +1658,7 @@ class ChartPanelFrame(QFrame):
         cursor_move_callback,
         signal_remove_callback,
         signal_color_callback,
+        signal_selection_callback,
         width_sync_callback,
         initial_signal_table_width: int,
         parent: QWidget | None = None,
@@ -1563,13 +1675,13 @@ class ChartPanelFrame(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.view = InteractiveChartView(cursor_move_callback, drop_callback)
+        self.view = InteractiveChartView(cursor_move_callback, drop_callback, background_click_callback=lambda: self.signal_table.clearSelection())
         self.view.setFrameShape(QFrame.Shape.NoFrame)
-        self.signal_table = PanelSignalTable(panel_id, signal_remove_callback, signal_color_callback, drop_callback)
+        self.signal_table = PanelSignalTable(panel_id, signal_remove_callback, signal_color_callback, drop_callback, signal_selection_callback)
         self.body_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.body_splitter.setChildrenCollapsible(False)
         self.body_splitter.setHandleWidth(1)
-        self.body_splitter.setStyleSheet("QSplitter::handle { background: #e2eaf2; }")
+        self.body_splitter.setStyleSheet("QSplitter::handle { background: #d4e1ee; }")
         self.body_splitter.addWidget(self.view)
         self.body_splitter.addWidget(self.signal_table)
         self.body_splitter.setStretchFactor(0, 1)
@@ -1582,7 +1694,7 @@ class ChartPanelFrame(QFrame):
         self.close_button.setText("✕")
         self.close_button.setToolTip("删除当前显示框")
         self.close_button.setStyleSheet(
-            "min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px;"
+            "min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px;"
             "padding: 0; color: white; background: #dc2626; border: 1px solid #b91c1c; border-radius: 9px;"
         )
         self.close_button.clicked.connect(lambda _checked=False: self._remove_callback())
@@ -1590,7 +1702,13 @@ class ChartPanelFrame(QFrame):
         QTimer.singleShot(0, self._position_close_button)
         QTimer.singleShot(0, self._apply_target_signal_table_width)
 
-        self.setStyleSheet("QFrame#chartPanelCard { background: transparent; border: none; }")
+        self.setStyleSheet(
+            "QFrame#chartPanelCard {"
+            "background: rgba(255, 255, 255, 0.82);"
+            "border: 1px solid #d8e3ef;"
+            "border-radius: 14px;"
+            "}"
+        )
         self.body_splitter.setSizes([1280, self._target_signal_table_width])
 
     def _on_splitter_moved(self, _position: int, _index: int) -> None:
@@ -1665,7 +1783,8 @@ class SharedCursorOverlay(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.engine = AnalysisEngine(runtime_logger=self._emit_runtime_log)
+        config_paths = get_config_file_paths()
+        self.engine = AnalysisEngine(runtime_logger=self._emit_runtime_log, progress_callback=self._on_engine_progress)
         self.derived_signal_entries = []
         self.kpi_spec_entries = []
         self.kpi_groups: list[dict[str, object]] = []
@@ -1677,6 +1796,8 @@ class MainWindow(QMainWindow):
         self.selected_chart_path: str | None = None
         self.output_dir = Path.cwd() / "outputs_gui"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._derived_signals_dir = config_paths["derived_signals_dir"]
+        self._kpi_specs_dir = config_paths["kpi_specs_dir"]
         self.derived_signal_editor_path: Path | None = None
         self.kpi_editor_path: Path | None = None
         self.template_editor_path: Path | None = None
@@ -1723,16 +1844,25 @@ class MainWindow(QMainWindow):
         self._chart_layout_refresh_timer = QTimer(self)
         self._chart_layout_refresh_timer.setSingleShot(True)
         self._chart_layout_refresh_timer.timeout.connect(self._finalize_chart_layout)
+        self._config_dir_watcher = QFileSystemWatcher(self)
+        self._config_dir_watcher.directoryChanged.connect(self._on_config_directory_changed)
+        self._config_dir_reload_timer = QTimer(self)
+        self._config_dir_reload_timer.setSingleShot(True)
+        self._config_dir_reload_timer.timeout.connect(self._reload_runtime_configs_from_external_change)
+        self._runtime_config_snapshot: set[tuple[str, str]] = set()
+        self._last_analysis_runtime_config_snapshot: set[tuple[str, str]] | None = None
 
         self.setWindowTitle("自动化数据分析工具")
         self.resize(1720, 1060)
         self.setStyleSheet(APP_STYLE)
         self._build_ui()
         self._bind_shortcuts()
+        self._refresh_config_directory_watch_paths()
         app = QApplication.instance()
         if app is not None:
             app.focusChanged.connect(self._on_application_focus_changed)
         self.reload_runtime_configs(log_message=False)
+        self._runtime_config_snapshot = self._build_runtime_config_snapshot()
 
     def _sort_text_key(self, text: str) -> str:
         normalized = str(text or "").strip()
@@ -1789,8 +1919,7 @@ class MainWindow(QMainWindow):
             self._make_button("添加目录", QStyle.StandardPixmap.SP_DirOpenIcon),
             self._make_button("移除选中", QStyle.StandardPixmap.SP_TrashIcon),
             self._make_button("清空", QStyle.StandardPixmap.SP_DialogResetButton),
-            self._make_button("分析选中", QStyle.StandardPixmap.SP_MediaPlay),
-            self._make_button("分析全部", QStyle.StandardPixmap.SP_ArrowForward),
+            self._make_button("开始分析", QStyle.StandardPixmap.SP_MediaPlay),
         ]:
             toolbar.addWidget(button)
         _accent_btn_style = (
@@ -1800,13 +1929,11 @@ class MainWindow(QMainWindow):
             " QPushButton:pressed { background: #1d4ed8; }"
         )
         toolbar.itemAt(4).widget().setStyleSheet(_accent_btn_style)
-        toolbar.itemAt(5).widget().setStyleSheet(_accent_btn_style)
         toolbar.itemAt(0).widget().clicked.connect(self.add_files)
         toolbar.itemAt(1).widget().clicked.connect(self.add_folder)
         toolbar.itemAt(2).widget().clicked.connect(self.remove_selected_queue_items)
         toolbar.itemAt(3).widget().clicked.connect(self.clear_queue)
-        toolbar.itemAt(4).widget().clicked.connect(self.analyze_selected)
-        toolbar.itemAt(5).widget().clicked.connect(self.analyze_all)
+        toolbar.itemAt(4).widget().clicked.connect(self.analyze_all)
         toolbar.addStretch(1)
 
         self.queue_stats_label = QLabel("当前 0 个文件，已完成分析 0 个")
@@ -1854,14 +1981,60 @@ class MainWindow(QMainWindow):
         content_splitter.setSizes([900, 260])
         queue_layout.addWidget(content_splitter, 1)
 
-        log_group = QGroupBox("运行日志")
+        log_group = QFrame()
+        log_group.setObjectName("runtimeLogPanel")
+        log_group.setStyleSheet(
+            "QFrame#runtimeLogPanel {"
+            "background: rgba(255, 255, 255, 0.96);"
+            "border: 1px solid #d7e2ee;"
+            "border-radius: 18px;"
+            "}"
+        )
         log_layout = QVBoxLayout(log_group)
+        log_layout.setContentsMargins(14, 0, 14, 12)
+        log_layout.setSpacing(4)
         log_header = QHBoxLayout()
+        log_header.setContentsMargins(0, -1, 0, 0)
+        log_header.setSpacing(8)
+        log_title = QLabel("运行日志")
+        log_title.setStyleSheet(
+            "QLabel {"
+            "font-weight: 700;"
+            "font-size: 12px;"
+            "color: #1a3553;"
+            "padding: 3px 10px;"
+            "background: rgba(248, 251, 255, 0.98);"
+            "border: 1px solid #e2eaf3;"
+            "border-radius: 9px;"
+            "}"
+        )
+        log_header.addWidget(log_title, 0, Qt.AlignmentFlag.AlignVCenter)
         log_header.addStretch(1)
+        self.detailed_log_checkbox = QCheckBox()
+        self.detailed_log_checkbox.setToolTip("勾选后显示分析过程中的详细执行步骤")
+        self.detailed_log_checkbox.setObjectName("detailedLogToggle")
+        self.detailed_log_checkbox.setStyleSheet(
+            "QCheckBox#detailedLogToggle {"
+            "spacing: 0;"
+            "padding: 0 2px;"
+            "margin-top: 1px;"
+            "font-weight: 600;"
+            "font-size: 13px;"
+            "color: #1a3553;"
+            "background: transparent;"
+            "}"
+            "QCheckBox#detailedLogToggle::indicator { width: 0px; height: 0px; }"
+            "QCheckBox#detailedLogToggle:hover { color: #0f4c81; background: transparent; }"
+        )
+        self.detailed_log_checkbox.toggled.connect(self._sync_detailed_log_toggle_appearance)
+        self._sync_detailed_log_toggle_appearance(False)
+        log_header.addWidget(self.detailed_log_checkbox, 0, Qt.AlignmentFlag.AlignVCenter)
         clear_log_button = QPushButton("清空")
-        clear_log_button.setFixedHeight(30)
+        clear_log_button.setFixedHeight(24)
+        clear_log_button.setMinimumWidth(58)
+        clear_log_button.setStyleSheet("QPushButton { padding: 0 12px; margin-top: 1px; }")
         clear_log_button.clicked.connect(self.clear_runtime_log)
-        log_header.addWidget(clear_log_button)
+        log_header.addWidget(clear_log_button, 0, Qt.AlignmentFlag.AlignVCenter)
         log_layout.addLayout(log_header)
         self.log_area = QTextBrowser()
         self.log_area.setReadOnly(True)
@@ -1880,6 +2053,7 @@ class MainWindow(QMainWindow):
         self.rule_status_filter = QComboBox()
         self.rule_status_filter.addItem("ALL", "all")
         self.rule_status_filter.addItem("达标", "pass")
+        self.rule_status_filter.addItem("未知", "warning")
         self.rule_status_filter.addItem("未达标", "fail")
         self.rule_status_filter.currentIndexChanged.connect(self.refresh_result_views)
         filter_row.addWidget(QLabel("结果筛选"))
@@ -1901,7 +2075,13 @@ class MainWindow(QMainWindow):
 
         tools_group = QFrame()
         tools_group.setObjectName("chartToolsBar")
-        tools_group.setStyleSheet("QFrame#chartToolsBar { background: rgba(255, 255, 255, 0.52); border: none; border-radius: 6px; }")
+        tools_group.setStyleSheet(
+            "QFrame#chartToolsBar {"
+            "background: rgba(255, 255, 255, 0.9);"
+            "border: 1px solid #d7e3ee;"
+            "border-radius: 12px;"
+            "}"
+        )
         tools_layout = QGridLayout(tools_group)
         tools_layout.setContentsMargins(2, 2, 2, 0)
         tools_layout.setHorizontalSpacing(2)
@@ -1909,23 +2089,17 @@ class MainWindow(QMainWindow):
         self.result_scope_combo = QComboBox()
         self.result_scope_combo.currentIndexChanged.connect(self.on_result_scope_changed)
         self.result_scope_combo.setMinimumWidth(260)
-        prev_button = QToolButton()
-        prev_button.setText("←")
-        prev_button.setToolTip("上一个文件")
-        prev_button.clicked.connect(self.select_previous_result)
-        next_button = QToolButton()
-        next_button.setText("→")
-        next_button.setToolTip("下一个文件")
-        next_button.clicked.connect(self.select_next_result)
         add_panel_button = QToolButton()
         add_panel_button.setText("+")
         add_panel_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        add_panel_button.setFixedSize(32, 32)
         add_panel_button.setToolTip("新增显示框")
         add_panel_button.clicked.connect(self.add_chart_panel)
 
         self.signal_library_button = QToolButton()
         self.signal_library_button.setText("≣")
         self.signal_library_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        self.signal_library_button.setFixedSize(32, 32)
         self.signal_library_button.setToolTip("打开信号库")
         self.signal_library_button.setCheckable(True)
         self.signal_library_button.toggled.connect(self.toggle_signal_library)
@@ -1933,36 +2107,42 @@ class MainWindow(QMainWindow):
         formula_signal_button = QToolButton()
         formula_signal_button.setText("ƒx")
         formula_signal_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        formula_signal_button.setFixedSize(32, 32)
         formula_signal_button.setToolTip("新增表达式信号，例如 C = A + B")
         formula_signal_button.clicked.connect(self.create_formula_signal)
 
         fit_all_button = QToolButton()
         fit_all_button.setText("⤢")
         fit_all_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        fit_all_button.setFixedSize(32, 32)
         fit_all_button.setToolTip("最佳缩放")
         fit_all_button.clicked.connect(self.fit_all_charts)
 
         fit_x_button = QToolButton()
         fit_x_button.setText("↔")
         fit_x_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        fit_x_button.setFixedSize(32, 32)
         fit_x_button.setToolTip("横向最佳缩放")
         fit_x_button.clicked.connect(self.fit_x_charts)
 
         fit_y_button = QToolButton()
         fit_y_button.setText("↕")
         fit_y_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        fit_y_button.setFixedSize(32, 32)
         fit_y_button.setToolTip("纵向最佳缩放")
         fit_y_button.clicked.connect(self.fit_y_charts)
 
         self.cursor_mode_button = QToolButton()
         self.cursor_mode_button.setText("⌖")
         self.cursor_mode_button.setStyleSheet(TOOL_BUTTON_STYLE)
-        self.cursor_mode_button.setToolTip("切换光标模式，Ctrl+W")
+        self.cursor_mode_button.setFixedSize(32, 32)
+        self.cursor_mode_button.setToolTip("切换光标模式，Ctrl+R")
         self.cursor_mode_button.clicked.connect(self.cycle_cursor_mode)
 
         self.zoom_x_mode_button = QToolButton()
         self.zoom_x_mode_button.setText("⇆")
         self.zoom_x_mode_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        self.zoom_x_mode_button.setFixedSize(32, 32)
         self.zoom_x_mode_button.setToolTip("横向缩放模式，Ctrl + 滚轮 可快速横向缩放")
         self.zoom_x_mode_button.setCheckable(True)
         self.zoom_x_mode_button.toggled.connect(self.on_zoom_mode_button_toggled)
@@ -1970,13 +2150,14 @@ class MainWindow(QMainWindow):
         self.zoom_y_mode_button = QToolButton()
         self.zoom_y_mode_button.setText("⇅")
         self.zoom_y_mode_button.setStyleSheet(TOOL_BUTTON_STYLE)
+        self.zoom_y_mode_button.setFixedSize(32, 32)
         self.zoom_y_mode_button.setToolTip("纵向缩放模式，Shift + 滚轮 可快速纵向缩放")
         self.zoom_y_mode_button.setCheckable(True)
         self.zoom_y_mode_button.toggled.connect(self.on_zoom_mode_button_toggled)
 
         self.signal_library_popup = QFrame(self, Qt.WindowType.Popup)
         self.signal_library_popup.setVisible(False)
-        self.signal_library_popup.setStyleSheet("background: #ffffff; border: 1px solid #d9e3ed; border-radius: 6px;")
+        self.signal_library_popup.setStyleSheet("background: #ffffff; border: 1px solid #d6e2ee; border-radius: 12px;")
         popup_layout = QVBoxLayout(self.signal_library_popup)
         popup_layout.setContentsMargins(10, 10, 10, 10)
         popup_layout.setSpacing(8)
@@ -2029,18 +2210,16 @@ class MainWindow(QMainWindow):
         tools_layout.setVerticalSpacing(4)
         tools_layout.addWidget(QLabel("文件"), 0, 0)
         tools_layout.addWidget(self.result_scope_combo, 0, 1)
-        tools_layout.addWidget(prev_button, 0, 2)
-        tools_layout.addWidget(next_button, 0, 3)
-        tools_layout.addWidget(self.signal_library_button, 0, 4)
-        tools_layout.addWidget(formula_signal_button, 0, 5)
-        tools_layout.addWidget(add_panel_button, 0, 6)
-        tools_layout.addWidget(fit_all_button, 0, 7)
-        tools_layout.addWidget(fit_x_button, 0, 8)
-        tools_layout.addWidget(fit_y_button, 0, 9)
-        tools_layout.addWidget(self.zoom_x_mode_button, 0, 10)
-        tools_layout.addWidget(self.zoom_y_mode_button, 0, 11)
-        tools_layout.addWidget(self.cursor_mode_button, 0, 12)
-        tools_layout.setColumnStretch(13, 1)
+        tools_layout.addWidget(self.signal_library_button, 0, 2)
+        tools_layout.addWidget(formula_signal_button, 0, 3)
+        tools_layout.addWidget(add_panel_button, 0, 4)
+        tools_layout.addWidget(fit_all_button, 0, 5)
+        tools_layout.addWidget(fit_x_button, 0, 6)
+        tools_layout.addWidget(fit_y_button, 0, 7)
+        tools_layout.addWidget(self.zoom_x_mode_button, 0, 8)
+        tools_layout.addWidget(self.zoom_y_mode_button, 0, 9)
+        tools_layout.addWidget(self.cursor_mode_button, 0, 10)
+        tools_layout.setColumnStretch(11, 1)
 
         sheets_row = QHBoxLayout()
         sheets_row.setContentsMargins(0, 0, 0, 0)
@@ -2065,12 +2244,6 @@ class MainWindow(QMainWindow):
         add_sheet_button.setToolTip("新增工作表")
         add_sheet_button.clicked.connect(self.add_chart_sheet)
 
-        rename_sheet_button = QToolButton()
-        rename_sheet_button.setText("✎")
-        rename_sheet_button.setStyleSheet(TOOL_BUTTON_STYLE)
-        rename_sheet_button.setToolTip("重命名当前工作表")
-        rename_sheet_button.clicked.connect(self.rename_current_chart_sheet)
-
         delete_sheet_button = QToolButton()
         delete_sheet_button.setText("－")
         delete_sheet_button.setStyleSheet(TOOL_BUTTON_STYLE)
@@ -2078,11 +2251,10 @@ class MainWindow(QMainWindow):
         delete_sheet_button.clicked.connect(self.remove_current_chart_sheet)
 
         sheets_row.addWidget(add_sheet_button)
-        sheets_row.addWidget(rename_sheet_button)
         sheets_row.addWidget(delete_sheet_button)
 
         self.chart_status_label = QLabel("光标未启用")
-        self.chart_status_label.setStyleSheet("color: #73879a; padding: 0; font-weight: 600; min-height: 12px; font-size: 10px;")
+        self.chart_status_label.setStyleSheet("color: #58708b; padding: 2px 6px; font-weight: 700; min-height: 18px; font-size: 10px; background: rgba(255,255,255,0.72); border: 1px solid #dbe6f1; border-radius: 9px;")
 
         self.chart_overlay_host = QWidget()
         chart_overlay_layout = QVBoxLayout(self.chart_overlay_host)
@@ -2152,9 +2324,11 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.derived_signal_editor_combo, 1)
         self.derived_signal_create_button = self._make_button("新增派生量", QStyle.StandardPixmap.SP_FileIcon)
         self.derived_signal_delete_button = self._make_button("删除", QStyle.StandardPixmap.SP_TrashIcon)
+        self.derived_signal_open_dir_button = self._make_button("打开目录", QStyle.StandardPixmap.SP_DirOpenIcon)
         self.derived_signal_create_button.clicked.connect(self.create_derived_signal_file)
         self.derived_signal_delete_button.clicked.connect(self.delete_derived_signal_file)
-        for button in [self.derived_signal_create_button, self.derived_signal_delete_button]:
+        self.derived_signal_open_dir_button.clicked.connect(self.open_derived_signal_directory)
+        for button in [self.derived_signal_open_dir_button, self.derived_signal_create_button, self.derived_signal_delete_button]:
             toolbar.addWidget(button)
         self.derived_signal_editor_path_label = QLabel("未加载派生量文件")
         self.derived_signal_editor_notice = QLabel("")
@@ -2179,9 +2353,11 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.kpi_editor_combo, 1)
         self.kpi_create_button = self._make_button("新增 KPI", QStyle.StandardPixmap.SP_FileIcon)
         self.kpi_delete_button = self._make_button("删除", QStyle.StandardPixmap.SP_TrashIcon)
+        self.kpi_open_dir_button = self._make_button("打开目录", QStyle.StandardPixmap.SP_DirOpenIcon)
         self.kpi_create_button.clicked.connect(self.create_kpi_file)
         self.kpi_delete_button.clicked.connect(self.delete_kpi_file)
-        for button in [self.kpi_create_button, self.kpi_delete_button]:
+        self.kpi_open_dir_button.clicked.connect(self.open_kpi_directory)
+        for button in [self.kpi_open_dir_button, self.kpi_create_button, self.kpi_delete_button]:
             toolbar.addWidget(button)
         self.kpi_editor_path_label = QLabel("未加载 KPI 文件")
         self.kpi_editor_notice = QLabel("")
@@ -2259,49 +2435,64 @@ class MainWindow(QMainWindow):
     def _build_mapping_editor_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        toolbar = QHBoxLayout()
-        add_custom_button = self._make_button("新增自定义信号", QStyle.StandardPixmap.SP_FileIcon)
-        add_custom_button.clicked.connect(self.add_custom_mapping_row)
-        delete_custom_button = self._make_button("删除自定义信号", QStyle.StandardPixmap.SP_TrashIcon)
-        delete_custom_button.clicked.connect(self.delete_selected_custom_mapping_row)
-        add_actual_name_column_button = self._make_button("新增真实信号名列", QStyle.StandardPixmap.SP_ArrowRight)
-        add_actual_name_column_button.clicked.connect(self.add_mapping_actual_name_column)
-        remove_actual_name_column_button = self._make_button("删除真实信号名列", QStyle.StandardPixmap.SP_ArrowLeft)
-        remove_actual_name_column_button.clicked.connect(self.remove_mapping_actual_name_column)
-        for button in [add_custom_button, delete_custom_button, add_actual_name_column_button, remove_actual_name_column_button]:
-            toolbar.addWidget(button)
-        toolbar.addStretch(1)
         self.mapping_tabs = QTabWidget()
-        self._mapping_actual_name_column_count = get_interface_mapping_actual_name_column_count()
+        mapping_actual_name_counts = get_interface_mapping_actual_name_column_counts()
+        self._system_mapping_actual_name_column_count = mapping_actual_name_counts["system"]
+        self._custom_mapping_actual_name_column_count = mapping_actual_name_counts["custom"]
         self.system_mapping_table = MappingEditorTable(read_only_columns={0, 1, 2})
-        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(self._mapping_actual_name_column_count)))
-        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(self._mapping_actual_name_column_count))
+        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(self._system_mapping_actual_name_column_count)))
+        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(self._system_mapping_actual_name_column_count))
         self._configure_mapping_table(self.system_mapping_table)
         self.system_mapping_table._after_paste_callback = self._refresh_and_schedule_mapping_persist
+        self.system_mapping_table._delete_selected_columns_callback = lambda selected_columns, table=self.system_mapping_table: self.remove_selected_mapping_actual_name_columns(table, selected_columns)
         self.system_mapping_table.cellChanged.connect(self._on_mapping_table_changed)
         self.system_mapping_table.cellDoubleClicked.connect(self.open_mapping_source_from_cell)
+        self.system_mapping_table.horizontalHeader().sectionClicked.connect(lambda index, table=self.system_mapping_table: self._select_mapping_column(table, index))
         self.custom_mapping_table = MappingEditorTable(read_only_columns=set())
-        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(self._mapping_actual_name_column_count)))
-        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(self._mapping_actual_name_column_count))
+        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(self._custom_mapping_actual_name_column_count)))
+        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(self._custom_mapping_actual_name_column_count))
         self._configure_mapping_table(self.custom_mapping_table)
         self.custom_mapping_table._after_paste_callback = self._refresh_and_schedule_mapping_persist
+        self.custom_mapping_table._delete_selected_columns_callback = lambda selected_columns, table=self.custom_mapping_table: self.remove_selected_mapping_actual_name_columns(table, selected_columns)
         self.custom_mapping_table.cellChanged.connect(self._on_mapping_table_changed)
+        self.custom_mapping_table.horizontalHeader().sectionClicked.connect(lambda index, table=self.custom_mapping_table: self._select_mapping_column(table, index))
         system_tab = QWidget()
         system_layout = QVBoxLayout(system_tab)
+        system_layout.setContentsMargins(0, 0, 0, 0)
+        system_layout.setSpacing(0)
         system_layout.addWidget(self.system_mapping_table)
         custom_tab = QWidget()
         custom_layout = QVBoxLayout(custom_tab)
+        custom_layout.setContentsMargins(0, 6, 0, 0)
+        custom_layout.setSpacing(8)
+        custom_toolbar = QHBoxLayout()
+        self.extra_mapping_add_button = self._make_button("新增", QStyle.StandardPixmap.SP_FileIcon)
+        self.extra_mapping_delete_button = self._make_button("删除", QStyle.StandardPixmap.SP_TrashIcon)
+        self.extra_mapping_add_button.clicked.connect(self.add_custom_mapping_row)
+        self.extra_mapping_delete_button.clicked.connect(self.delete_selected_custom_mapping_row)
+        custom_toolbar.addWidget(self.extra_mapping_add_button)
+        custom_toolbar.addWidget(self.extra_mapping_delete_button)
+        custom_toolbar.addStretch(1)
+        custom_layout.addLayout(custom_toolbar)
         custom_layout.addWidget(self.custom_mapping_table)
+        self.system_mapping_header_add_button = self._make_mapping_add_button(self.system_mapping_table)
+        self.custom_mapping_header_add_button = self._make_mapping_add_button(self.custom_mapping_table)
+        self._install_mapping_header_add_button(self.system_mapping_table, self.system_mapping_header_add_button)
+        self._install_mapping_header_add_button(self.custom_mapping_table, self.custom_mapping_header_add_button)
         self.mapping_tabs.addTab(system_tab, "系统信号")
-        self.mapping_tabs.addTab(custom_tab, "自定义信号")
-        layout.addLayout(toolbar)
+        self.mapping_tabs.addTab(custom_tab, "额外信号")
+        self.mapping_tabs.currentChanged.connect(self._refresh_mapping_header_add_buttons)
+        self._refresh_mapping_header_add_buttons()
         layout.addWidget(self.mapping_tabs, 1)
         return tab
 
     def _bind_shortcuts(self) -> None:
-        shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
-        shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        shortcut.activated.connect(self.cycle_cursor_mode)
+        cursor_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        cursor_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        cursor_shortcut.activated.connect(self.cycle_cursor_mode)
+        signal_toggle_shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
+        signal_toggle_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        signal_toggle_shortcut.activated.connect(self.toggle_selected_panel_signals_visibility)
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         save_shortcut.activated.connect(self.save_current_text_editor)
@@ -2391,8 +2582,34 @@ class MainWindow(QMainWindow):
         return button
 
     def _emit_runtime_log(self, level: str, message: str) -> None:
+        if level == "debug" and (not hasattr(self, "detailed_log_checkbox") or not self.detailed_log_checkbox.isChecked()):
+            return
         if hasattr(self, "log_area"):
             self.log(level, message)
+
+    def _sync_detailed_log_toggle_appearance(self, checked: bool) -> None:
+        if not hasattr(self, "detailed_log_checkbox"):
+            return
+        self.detailed_log_checkbox.setText("☑ 详细模式" if checked else "☐ 详细模式")
+
+    def _pump_ui_during_analysis(self) -> None:
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+    def _update_analysis_step_progress(self, fraction: float, message: str = "") -> None:
+        total_count = max(int(getattr(self, "_analysis_total_count", 1)), 1)
+        current_index = max(int(getattr(self, "_analysis_current_index", 1)), 1)
+        clamped_fraction = min(max(float(fraction), 0.0), 1.0)
+        completed_fraction = ((current_index - 1) + clamped_fraction) / total_count
+        progress_value = int(round(completed_fraction * 1000))
+        self.analysis_progress_bar.setValue(progress_value)
+        if message:
+            self.analysis_progress_bar.setFormat(message)
+        self._pump_ui_during_analysis()
+
+    def _on_engine_progress(self, fraction: float, message: str) -> None:
+        if not getattr(self, "_analysis_in_progress", False):
+            return
+        self._update_analysis_step_progress(fraction, message)
 
     def _register_log_link(self, target: dict[str, object]) -> str:
         self._log_link_counter += 1
@@ -2539,17 +2756,25 @@ class MainWindow(QMainWindow):
         header.setStretchLastSection(True)
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.setStyleSheet(
-            "QTableWidget { gridline-color: #e6edf5; selection-background-color: #dbeafe; }"
-            "QTableWidget::item { padding: 6px; }"
+            "QTableWidget { gridline-color: #e4edf6; selection-background-color: #d6e8fc; alternate-background-color: #f7fafd; }"
+            "QTableWidget::item { padding: 7px 8px; }"
         )
 
     def _configure_mapping_table(self, table: QTableWidget) -> None:
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table.setAlternatingRowColors(True)
+        table.setShowGrid(True)
+        table.setItemDelegate(MappingCellDelegate(table))
         table.verticalHeader().setVisible(False)
         header = table.horizontalHeader()
+        header.setSectionsClickable(True)
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        table.setStyleSheet(
+            "QTableWidget { gridline-color: #e4edf6; selection-background-color: #d9e8fb; alternate-background-color: #f8fbfe; }"
+            "QTableWidget::item { padding: 6px 8px; }"
+        )
         if table is self.system_mapping_table:
             for index in range(table.columnCount()):
                 if index == 0:
@@ -2563,6 +2788,188 @@ class MainWindow(QMainWindow):
             return
         for index in range(table.columnCount()):
             header.resizeSection(index, 180 if index == 0 else 220)
+
+    def _make_mapping_add_button(self, table: QTableWidget) -> QToolButton:
+        button = QToolButton()
+        button.setText("+")
+        button.setToolTip("新增真实信号名列")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoRaise(False)
+        button.setFixedSize(22, 22)
+        button.setVisible(True)
+        button.setStyleSheet(
+            "QToolButton {"
+            "background: #ffffff;"
+            "border: 1px solid #bfd0e1;"
+            "border-radius: 11px;"
+            "color: #0f4c81;"
+            "font-weight: 700;"
+            "padding: 0;"
+            "}"
+            "QToolButton:hover { background: #e8f2ff; border-color: #77a7d8; }"
+            "QToolButton:pressed { background: #d9e9fb; border-color: #4f86c4; }"
+        )
+        button.clicked.connect(lambda _checked=False, target=table: self.add_mapping_actual_name_column(target))
+        return button
+
+    def _install_mapping_header_add_button(self, table: QTableWidget, button: QToolButton) -> None:
+        header = table.horizontalHeader()
+        button.setParent(header.viewport())
+        button.raise_()
+        header.sectionResized.connect(lambda *_args, target=table: self._update_mapping_header_add_button_position(target))
+        header.sectionMoved.connect(lambda *_args, target=table: self._update_mapping_header_add_button_position(target))
+        header.geometriesChanged.connect(lambda target=table: self._update_mapping_header_add_button_position(target))
+        table.horizontalScrollBar().valueChanged.connect(lambda *_args, target=table: self._update_mapping_header_add_button_position(target))
+        QTimer.singleShot(0, lambda target=table: self._update_mapping_header_add_button_position(target))
+
+    def _mapping_header_add_button_for_table(self, table: QTableWidget) -> QToolButton | None:
+        if table is self.system_mapping_table:
+            return getattr(self, "system_mapping_header_add_button", None)
+        if table is self.custom_mapping_table:
+            return getattr(self, "custom_mapping_header_add_button", None)
+        return None
+
+    def _update_mapping_header_add_button_position(self, table: QTableWidget) -> None:
+        button = self._mapping_header_add_button_for_table(table)
+        if button is None:
+            return
+        header = table.horizontalHeader()
+        actual_name_start = 3 if table is self.system_mapping_table else 1
+        last_column = table.columnCount() - 1
+        if last_column < actual_name_start:
+            button.hide()
+            return
+        viewport = header.viewport()
+        x_position = header.sectionViewportPosition(last_column) + header.sectionSize(last_column) + 6
+        max_x = max(0, viewport.width() - button.width() - 2)
+        button.move(min(max(0, x_position), max_x), max(0, (viewport.height() - button.height()) // 2))
+        button.raise_()
+        button.setVisible(table.parentWidget() is not None)
+
+    def _select_mapping_column(self, table: QTableWidget, column_index: int) -> None:
+        if column_index < 0:
+            return
+        table.setFocus()
+        table.selectColumn(column_index)
+
+    def _refresh_mapping_header_add_buttons(self) -> None:
+        self._update_mapping_header_add_button_position(self.system_mapping_table)
+        self._update_mapping_header_add_button_position(self.custom_mapping_table)
+
+    def _open_directory(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def open_derived_signal_directory(self) -> None:
+        self._open_directory(self._derived_signals_dir)
+
+    def open_kpi_directory(self) -> None:
+        self._open_directory(self._kpi_specs_dir)
+
+    def _watched_config_directories(self) -> list[Path]:
+        return [self._derived_signals_dir, self._kpi_specs_dir]
+
+    def _build_runtime_config_snapshot(self) -> set[tuple[str, str]]:
+        snapshot: set[tuple[str, str]] = set()
+        for kind, directory, protected_files in [
+            ("派生量", self._derived_signals_dir, PROTECTED_DERIVED_FILES),
+            ("KPI", self._kpi_specs_dir, PROTECTED_KPI_FILES),
+        ]:
+            if not directory.exists():
+                continue
+            for path in directory.glob("*.py"):
+                if not path.is_file() or path.name in protected_files:
+                    continue
+                snapshot.add((kind, path.stem))
+        return snapshot
+
+    def _format_runtime_config_change_message(
+        self,
+        previous_snapshot: set[tuple[str, str]],
+        current_snapshot: set[tuple[str, str]],
+    ) -> str | None:
+        added = sorted(current_snapshot - previous_snapshot, key=lambda item: (item[0], self._sort_text_key(item[1])))
+        removed = sorted(previous_snapshot - current_snapshot, key=lambda item: (item[0], self._sort_text_key(item[1])))
+        message_parts: list[str] = []
+        if added:
+            message_parts.append("新增 " + "、".join(f"{kind} {name}" for kind, name in added))
+        if removed:
+            message_parts.append("删除 " + "、".join(f"{kind} {name}" for kind, name in removed))
+        if not message_parts:
+            return None
+        return "检测到运行时配置变化，界面已自动刷新：" + "；".join(message_parts)
+
+    def _log_runtime_config_changes_since_last_analysis(self) -> None:
+        current_snapshot = self._build_runtime_config_snapshot()
+        if self._last_analysis_runtime_config_snapshot is None:
+            self._last_analysis_runtime_config_snapshot = set(current_snapshot)
+            return
+        message = self._format_runtime_config_change_message(self._last_analysis_runtime_config_snapshot, current_snapshot)
+        self._last_analysis_runtime_config_snapshot = set(current_snapshot)
+        if message:
+            self.log("info", message)
+
+    def _refresh_config_directory_watch_paths(self) -> None:
+        watched = {str(path) for path in self._watched_config_directories() if path.exists()}
+        current = set(self._config_dir_watcher.directories())
+        for path in sorted(current - watched):
+            self._config_dir_watcher.removePath(path)
+        for path in sorted(watched - current):
+            self._config_dir_watcher.addPath(path)
+
+    def _on_config_directory_changed(self, _path: str) -> None:
+        self._refresh_config_directory_watch_paths()
+        self._config_dir_reload_timer.start(250)
+
+    def _reload_runtime_configs_from_external_change(self) -> None:
+        current_snapshot = self._build_runtime_config_snapshot()
+        if current_snapshot == self._runtime_config_snapshot:
+            return
+        preserve_editors: set[str] = set()
+        if self._derived_signal_editor_dirty:
+            preserve_editors.add("derived")
+        if self._kpi_editor_dirty:
+            preserve_editors.add("kpi")
+        self.reload_runtime_configs(log_message=False, preserve_editors=preserve_editors)
+        self._runtime_config_snapshot = self._build_runtime_config_snapshot()
+
+    def _mapping_actual_name_column_count_for_table(self, table: QTableWidget) -> int:
+        if table is self.system_mapping_table:
+            return int(getattr(self, "_system_mapping_actual_name_column_count", 3))
+        return int(getattr(self, "_custom_mapping_actual_name_column_count", 3))
+
+    def _remove_actual_name_indexes_from_rows(self, rows: list[dict[str, object]], indexes_to_remove: list[int]) -> list[dict[str, object]]:
+        removal_indexes = set(indexes_to_remove)
+        normalized_rows: list[dict[str, object]] = []
+        for row in rows:
+            copied = dict(row)
+            actual_names = list(copied.get("actual_names", []))
+            copied["actual_names"] = [name for index, name in enumerate(actual_names) if index not in removal_indexes]
+            normalized_rows.append(copied)
+        return normalized_rows
+
+    def remove_selected_mapping_actual_name_columns(self, source_table: QTableWidget, selected_columns: list[int] | None = None) -> None:
+        actual_name_start = 3 if source_table is self.system_mapping_table else 1
+        selected_columns = selected_columns or []
+        actual_name_indexes = sorted({column_index - actual_name_start for column_index in selected_columns if column_index >= actual_name_start})
+        if not actual_name_indexes:
+            return
+        source_count = self._mapping_actual_name_column_count_for_table(source_table)
+        if source_count - len(actual_name_indexes) < 1:
+            QMessageBox.information(self, "无法删除", "至少保留一列真实信号名。")
+            return
+        system_rows = self._extract_mapping_rows(self.system_mapping_table)
+        custom_rows = self._extract_mapping_rows(self.custom_mapping_table)
+        if source_table is self.system_mapping_table:
+            system_rows = self._remove_actual_name_indexes_from_rows(system_rows, actual_name_indexes)
+        else:
+            custom_rows = self._remove_actual_name_indexes_from_rows(custom_rows, actual_name_indexes)
+        self._set_mapping_actual_name_column_count(
+            source_table,
+            source_count - len(actual_name_indexes),
+            system_rows=system_rows,
+            custom_rows=custom_rows,
+        )
 
     def choose_output_dir(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "选择输出目录", str(self.output_dir))
@@ -2846,21 +3253,6 @@ class MainWindow(QMainWindow):
     def on_file_selection_changed(self) -> None:
         return
 
-    def analyze_selected(self) -> None:
-        if not self._ensure_mapping_ready_for_analysis():
-            return
-        if not self._validate_runtime_definitions_before_analysis():
-            return
-        items = [item for item in self.file_list.selectedItems() if not bool(item.data(QUEUE_HEADER_ROLE))]
-        if not items:
-            QMessageBox.information(self, "未选择文件", "请先在主页中选择一个或多个文件。")
-            return
-        entries = [
-            {"path": str(item.data(QUEUE_PATH_ROLE)), "group_key": str(item.data(QUEUE_GROUP_ROLE) or "__all_kpis__")}
-            for item in items
-        ]
-        self._analyze_paths(entries)
-
     def analyze_all(self) -> None:
         if not self._ensure_mapping_ready_for_analysis():
             return
@@ -2881,7 +3273,9 @@ class MainWindow(QMainWindow):
 
     def _analyze_paths(self, entries: list[dict[str, str]]) -> None:
         self.clear_runtime_log()
+        self._log_runtime_config_changes_since_last_analysis()
         self.reload_runtime_configs(log_message=False)
+        self._runtime_config_snapshot = self._build_runtime_config_snapshot()
         self._clear_analysis_results(keep_queue=True)
         output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -2892,18 +3286,21 @@ class MainWindow(QMainWindow):
         analyzed_paths: list[str] = []
         analyzed_results: list[AnalysisResult] = []
         total_count = len(entries)
-        self.analysis_progress_bar.setRange(0, total_count)
+        self._analysis_in_progress = True
+        self._analysis_total_count = total_count
+        self._analysis_current_index = 1
+        self.analysis_progress_bar.setRange(0, 1000)
         self.analysis_progress_bar.setValue(0)
-        self.analysis_progress_bar.setFormat("分析准备中 %v/%m")
-        QApplication.processEvents()
+        self.analysis_progress_bar.setFormat("分析准备中")
+        self._pump_ui_during_analysis()
         for index, entry in enumerate(entries, start=1):
             path = Path(entry["path"])
             try:
+                self._analysis_current_index = index
                 group_key = str(entry.get("group_key", "__all_kpis__"))
                 group_name = self._group_name(group_key)
                 result_key = self._make_result_key(str(path), group_key)
-                self.analysis_progress_bar.setFormat(f"分析中 {path.name} %v/%m")
-                QApplication.processEvents()
+                self._update_analysis_step_progress(0.02, f"分析中 {path.name}")
                 result = self.engine.analyze_file(path, kpi_group_key=group_key)
                 self.results_by_key[result_key] = result
                 if result_key not in self.result_order:
@@ -2911,12 +3308,12 @@ class MainWindow(QMainWindow):
                 analyzed_paths.append(str(path))
                 analyzed_results.append(result)
                 self.log("success", f"分析成功: {path.name}，分析组: {group_name}")
+                self._update_analysis_step_progress(1.0, f"分析完成 {path.name}")
             except ConfigExecutionError as exc:
                 self._log_runtime_execution_error(path, exc)
             except Exception as exc:  # noqa: BLE001
                 self.log("error", f"分析失败: {path.name}: {exc}")
-            self.analysis_progress_bar.setValue(index)
-            QApplication.processEvents()
+                self._update_analysis_step_progress(1.0, f"分析失败 {path.name}")
         self._update_queue_stats()
         self._refresh_result_scope_combo()
         if analyzed_paths:
@@ -2928,7 +3325,10 @@ class MainWindow(QMainWindow):
             self._export_batch_word(analyzed_results, output_dir, report_title)
         if not export_targets:
             self.log("warning", "分析已完成，当前未勾选自动导出格式。")
-        self.analysis_progress_bar.setFormat(f"分析完成 {self.analysis_progress_bar.value()}/{total_count}")
+        self.analysis_progress_bar.setValue(1000)
+        self.analysis_progress_bar.setFormat(f"分析完成 {len(analyzed_results)}/{total_count}")
+        self._analysis_in_progress = False
+        self._pump_ui_during_analysis()
 
     def _export_batch_html(self, results: list[AnalysisResult], output_dir: Path, template_path, report_title: str) -> None:
         output = export_html(results, output_dir / batch_report_filename(report_title), template_path=template_path, report_title=report_title)
@@ -3086,11 +3486,15 @@ class MainWindow(QMainWindow):
             self.rule_table.insertRow(group_row)
             group_item = QTableWidgetItem(self._group_name(group_key))
             group_item.setData(RESULT_ROW_KIND_ROLE, "group")
-            group_item.setBackground(QColor("#e0f2fe"))
-            group_item.setForeground(QColor("#0c4a6e"))
+            group_font = group_item.font()
+            group_font.setBold(True)
+            group_font.setPointSize(max(group_font.pointSize(), 11))
+            group_item.setFont(group_font)
+            group_item.setBackground(QColor("#dbeafe"))
+            group_item.setForeground(QColor("#0f3f67"))
             self.rule_table.setItem(group_row, 0, group_item)
             self.rule_table.setSpan(group_row, 0, 1, self.rule_table.columnCount())
-            self.rule_table.setRowHeight(group_row, 30)
+            self.rule_table.setRowHeight(group_row, 32)
             ordered_results = sorted(group_results, key=lambda item: self._sort_text_key(item.context.source_path.name))
             for result_index, result in enumerate(ordered_results):
                 rows = [item for item in result.kpis if selected_status == "all" or item.status == selected_status]
@@ -3099,19 +3503,24 @@ class MainWindow(QMainWindow):
                 file_item = QTableWidgetItem(result.context.source_path.name)
                 file_item.setData(RESULT_ROW_KIND_ROLE, "file")
                 file_item.setData(RESULT_ROW_PATH_ROLE, str(result.context.source_path))
-                file_item.setBackground(QColor("#f8fafc"))
-                file_item.setForeground(QColor("#334155"))
+                file_font = file_item.font()
+                file_font.setBold(True)
+                file_item.setFont(file_font)
+                file_item.setBackground(QColor("#f5f8fc"))
+                file_item.setForeground(QColor("#42576d"))
                 file_item.setToolTip(f"双击跳转曲线页并选中该文件\n{result.context.source_path}")
                 self.rule_table.setItem(file_row, 0, file_item)
                 self.rule_table.setSpan(file_row, 0, 1, self.rule_table.columnCount())
-                self.rule_table.setRowHeight(file_row, 28)
+                self.rule_table.setRowHeight(file_row, 30)
                 for item in rows:
                     row_index = self.rule_table.rowCount()
                     self.rule_table.insertRow(row_index)
-                    values = [item.title, item.description, item.unit, f"{item.value:.4f}", item.rule_description, item.result_label]
+                    values = [item.title, item.description, item.unit, self._format_kpi_value(item.value), item.rule_description, item.result_label]
                     for column_index, value in enumerate(values):
                         table_item = QTableWidgetItem(value)
                         table_item.setData(RESULT_ROW_KIND_ROLE, "kpi")
+                        if row_index % 2 == 0:
+                            table_item.setBackground(QColor("#fbfdff"))
                         if column_index == 0:
                             table_item.setData(Qt.ItemDataRole.UserRole, item.name)
                         if column_index == 5:
@@ -3127,13 +3536,20 @@ class MainWindow(QMainWindow):
                 self.rule_table.setRowHeight(spacer_row, 14)
 
     def _style_status_item(self, item: QTableWidgetItem, status: str) -> None:
-        palette = {"pass": QColor("#166534"), "warning": QColor("#b45309"), "fail": QColor("#b91c1c")}
+        palette = {"pass": QColor("#166534"), "warning": QColor("#92400e"), "fail": QColor("#b91c1c")}
         item.setForeground(palette.get(status, QColor("#1f2937")))
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         if status == "pass":
             item.setBackground(QColor("#ecfdf5"))
+        elif status == "warning":
+            item.setBackground(QColor("#fef3c7"))
         elif status == "fail":
             item.setBackground(QColor("#fff1f2"))
+
+    def _format_kpi_value(self, value: float | None) -> str:
+        if value is None:
+            return "-"
+        return f"{float(value):.4f}"
 
     def filter_signal_browser(self, text: str) -> None:
         keyword = text.strip().lower()
@@ -3203,7 +3619,7 @@ class MainWindow(QMainWindow):
                 self.cursor_positions = [None, None]
             mode_text = "双光标"
         self._next_cursor_slot = 0
-        self.cursor_mode_button.setToolTip(f"当前: {mode_text}，Ctrl+W 切换")
+        self.cursor_mode_button.setToolTip(f"当前: {mode_text}，Ctrl+R 切换")
         self.log("info", f"光标模式已切换为: {mode_text}")
         self._ensure_default_cursor_positions()
         self.refresh_cursor_displays()
@@ -3342,6 +3758,7 @@ class MainWindow(QMainWindow):
             series = QLineSeries()
             series.setName(signal_name)
             series.setColor(self._signal_color(signal_name))
+            series.setPen(QPen(self._signal_color(signal_name), 1.6, Qt.PenStyle.SolidLine))
             has_values = False
             for time_value, y_value in zip(frame["time_s"], frame[signal_name]):
                 try:
@@ -3392,10 +3809,12 @@ class MainWindow(QMainWindow):
         sheet_index = (index if index is not None else len(self.chart_sheets)) + 1
         return f"工作表 {sheet_index}"
 
-    def _new_chart_panel_state(self, default_signals: list[str] | None = None) -> dict[str, object]:
+    def _new_chart_panel_state(self, default_signals: list[str] | None = None, hidden_signals: list[str] | None = None) -> dict[str, object]:
         panel_id = self._next_chart_panel_id
         self._next_chart_panel_id += 1
-        return {"panel_id": panel_id, "signals": list(default_signals or [])}
+        visible_signals = [str(signal).strip() for signal in (default_signals or []) if str(signal).strip()]
+        hidden = [signal for signal in (hidden_signals or []) if signal in visible_signals]
+        return {"panel_id": panel_id, "signals": visible_signals, "hidden_signals": hidden}
 
     def _load_chart_sheets_from_view_state(self) -> None:
         sheets: list[dict[str, object]] = []
@@ -3407,7 +3826,8 @@ class MainWindow(QMainWindow):
                 if not isinstance(panel_state, dict):
                     continue
                 signals = [str(signal).strip() for signal in panel_state.get("signals", []) if str(signal).strip()]
-                panels.append(self._new_chart_panel_state(signals))
+                hidden_signals = [str(signal).strip() for signal in panel_state.get("hidden_signals", []) if str(signal).strip()]
+                panels.append(self._new_chart_panel_state(signals, hidden_signals))
             sheets.append({
                 "name": str(sheet_state.get("name", "")).strip() or self._default_chart_sheet_name(index - 1),
                 "panels": panels,
@@ -3473,6 +3893,7 @@ class MainWindow(QMainWindow):
             cursor_move_callback=self.update_cursor_position,
             signal_remove_callback=lambda signal_name, target=panel_state: self.remove_signal_from_panel(target, signal_name),
             signal_color_callback=self.choose_signal_color,
+            signal_selection_callback=self.on_panel_signal_selection_changed,
             width_sync_callback=self.sync_signal_table_width_across_panels,
             initial_signal_table_width=self._signal_table_width_for_active_sheet(),
         )
@@ -3639,11 +4060,13 @@ class MainWindow(QMainWindow):
         if source_panel is not None and source_panel is not panel_state:
             source_signals: list[str] = source_panel["signals"]
             source_panel["signals"] = [signal_name for signal_name in source_signals if signal_name not in valid_signal_names]
+            source_panel["hidden_signals"] = [signal_name for signal_name in source_panel.get("hidden_signals", []) if signal_name not in valid_signal_names]
         target_signals = [signal_name for signal_name in signals if signal_name not in valid_signal_names]
         if insert_index is None:
             insert_index = len(target_signals)
         bounded_index = max(0, min(len(target_signals), insert_index))
         panel_state["signals"] = target_signals[:bounded_index] + valid_signal_names + target_signals[bounded_index:]
+        panel_state["hidden_signals"] = [signal_name for signal_name in panel_state.get("hidden_signals", []) if signal_name in panel_state["signals"] and signal_name not in valid_signal_names]
         self._persist_chart_view_state()
         self.refresh_chart_panels()
 
@@ -3657,8 +4080,63 @@ class MainWindow(QMainWindow):
         signals: list[str] = panel_state["signals"]
         if signal_name in signals:
             signals.remove(signal_name)
+        panel_state["hidden_signals"] = [name for name in panel_state.get("hidden_signals", []) if name != signal_name]
         self._persist_chart_view_state()
         self.refresh_chart_panels()
+
+    def _focused_panel_signal_table(self) -> PanelSignalTable | None:
+        widget = QApplication.focusWidget()
+        while widget is not None:
+            if isinstance(widget, PanelSignalTable):
+                return widget
+            widget = widget.parentWidget()
+        return None
+
+    def toggle_selected_panel_signals_visibility(self) -> None:
+        table = self._focused_panel_signal_table()
+        if table is None:
+            return
+        selected_signal_names = table._selected_signal_names()
+        if not selected_signal_names:
+            return
+        saved_axis_ranges: dict[int, tuple[tuple[float, float] | None, tuple[float, float] | None]] = {}
+        for panel in self.chart_panels:
+            frame: ChartPanelFrame | None = panel.get("frame")
+            panel_id = panel.get("panel_id")
+            if frame is None or not isinstance(panel_id, int):
+                continue
+            saved_axis_ranges[panel_id] = frame.view.current_axis_ranges()
+        panel_state = self._find_chart_panel_state(table.panel_id)
+        if panel_state is None:
+            return
+        hidden_signals = {str(signal_name).strip() for signal_name in panel_state.get("hidden_signals", []) if str(signal_name).strip()}
+        for signal_name in selected_signal_names:
+            if signal_name in hidden_signals:
+                hidden_signals.remove(signal_name)
+            else:
+                hidden_signals.add(signal_name)
+        panel_state["hidden_signals"] = [signal_name for signal_name in panel_state.get("signals", []) if signal_name in hidden_signals]
+        self._persist_chart_view_state()
+        self.refresh_chart_panels()
+        for panel in self.chart_panels:
+            frame: ChartPanelFrame | None = panel.get("frame")
+            panel_id = panel.get("panel_id")
+            if frame is None or not isinstance(panel_id, int):
+                continue
+            saved_x_range, saved_y_range = saved_axis_ranges.get(panel_id, (None, None))
+            frame.view.restore_axis_ranges(saved_x_range, saved_y_range, saved_x_range, saved_y_range)
+        if self.chart_panels:
+            first_panel_id = self.chart_panels[0].get("panel_id")
+            if isinstance(first_panel_id, int):
+                self._shared_chart_x_range = saved_axis_ranges.get(first_panel_id, (None, None))[0]
+        frame: ChartPanelFrame | None = panel_state.get("frame")
+        if frame is None:
+            return
+        frame.signal_table.clearSelection()
+        for row_index in range(frame.signal_table.rowCount()):
+            item = frame.signal_table.item(row_index, 0)
+            if item is not None and item.text().strip() in selected_signal_names:
+                frame.signal_table.selectRow(row_index)
 
     def _persist_chart_view_state(self) -> None:
         self._store_active_chart_sheet_state()
@@ -3669,7 +4147,14 @@ class MainWindow(QMainWindow):
                     "name": str(sheet.get("name", self._default_chart_sheet_name(index))).strip() or self._default_chart_sheet_name(index),
                     "signal_table_width": int(sheet.get("signal_table_width", 220) or 220),
                     "panels": [
-                        {"signals": [str(signal) for signal in panel.get("signals", []) if str(signal).strip()]}
+                        {
+                            "signals": [str(signal) for signal in panel.get("signals", []) if str(signal).strip()],
+                            "hidden_signals": [
+                                str(signal)
+                                for signal in panel.get("hidden_signals", [])
+                                if str(signal).strip() and str(signal).strip() in {str(name).strip() for name in panel.get("signals", []) if str(name).strip()}
+                            ],
+                        }
                         for panel in sheet.get("panels", [])
                         if isinstance(panel, dict)
                     ],
@@ -3713,10 +4198,14 @@ class MainWindow(QMainWindow):
             frame.view.zoom_mode = zoom_mode
 
     def _style_zoom_mode_buttons(self, zoom_mode: str) -> None:
-        active_style = "background: #dbeafe; border-color: #60a5fa; color: #0f4c81;"
-        normal_style = ""
-        self.zoom_x_mode_button.setStyleSheet(active_style if zoom_mode == "x" else normal_style)
-        self.zoom_y_mode_button.setStyleSheet(active_style if zoom_mode == "y" else normal_style)
+        active_style = (
+            TOOL_BUTTON_STYLE
+            + "QToolButton { background: #dbeafe; border-color: #60a5fa; color: #0f4c81; }"
+            + "QToolButton:hover { background: #dbeafe; border-color: #60a5fa; color: #0f4c81; }"
+            + "QToolButton:pressed { background: #bfdbfe; border-color: #3b82f6; color: #0f4c81; }"
+        )
+        self.zoom_x_mode_button.setStyleSheet(active_style if zoom_mode == "x" else TOOL_BUTTON_STYLE)
+        self.zoom_y_mode_button.setStyleSheet(active_style if zoom_mode == "y" else TOOL_BUTTON_STYLE)
 
     def fit_all_charts(self) -> None:
         for panel in self.chart_panels:
@@ -3747,7 +4236,9 @@ class MainWindow(QMainWindow):
         frame_data = self._prepare_chart_frame(result)
         visible_x_range = self._current_visible_x_range()
         for panel in self.chart_panels:
-            y_range = self._visible_y_range_for_panel(frame_data, panel.get("signals", []), visible_x_range)
+            hidden_signals = {str(signal_name).strip() for signal_name in panel.get("hidden_signals", []) if str(signal_name).strip()}
+            visible_signals = [signal_name for signal_name in panel.get("signals", []) if str(signal_name).strip() and str(signal_name).strip() not in hidden_signals]
+            y_range = self._visible_y_range_for_panel(frame_data, visible_signals, visible_x_range)
             if y_range is not None:
                 panel["frame"].view.set_y_range(y_range, panel["frame"].view._y_bounds)
             else:
@@ -3876,6 +4367,7 @@ class MainWindow(QMainWindow):
         for panel in self.chart_panels:
             frame: ChartPanelFrame = panel["frame"]
             signals: list[str] = panel["signals"]
+            hidden_signals = {str(signal_name).strip() for signal_name in panel.get("hidden_signals", []) if str(signal_name).strip()}
             frame.view.set_cursor_state(self.cursor_mode, self.cursor_positions)
             frame.signal_table.set_cursor_column_visibility(self.cursor_mode)
             frame.signal_table.setRowCount(len(signals))
@@ -3883,10 +4375,12 @@ class MainWindow(QMainWindow):
                 signal_item = frame.signal_table.item(row_index, 0)
                 if signal_item is None or signal_item.text() != signal_name:
                     signal_item = QTableWidgetItem(signal_name)
-                    signal_item.setForeground(self._signal_color(signal_name))
                     frame.signal_table.setItem(row_index, 0, signal_item)
-                frame.signal_table.setItem(row_index, 1, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
-                frame.signal_table.setItem(row_index, 2, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
+                signal_item.setData(PANEL_SIGNAL_BASE_COLOR_ROLE, self._signal_color(signal_name))
+                frame.signal_table.setItem(row_index, 1, QTableWidgetItem("" if signal_name in hidden_signals else self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
+                frame.signal_table.setItem(row_index, 2, QTableWidgetItem("" if signal_name in hidden_signals else self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
+            frame.signal_table.set_hidden_signals(hidden_signals)
+            self._apply_chart_panel_signal_emphasis(panel)
         self._auto_adjust_signal_table_width()
         self._refresh_chart_cursor_overlay()
 
@@ -3919,8 +4413,10 @@ class MainWindow(QMainWindow):
         for panel_index, panel in enumerate(self.chart_panels):
             frame: ChartPanelFrame = panel["frame"]
             signals: list[str] = panel["signals"]
+            hidden_signals = {str(signal_name).strip() for signal_name in panel.get("hidden_signals", []) if str(signal_name).strip()}
+            visible_signals = [signal_name for signal_name in signals if signal_name not in hidden_signals]
             previous_x_range, previous_y_range = frame.view.current_axis_ranges()
-            chart, x_bounds, y_bounds = self._build_signal_chart(sampled_frame, signals, self._chart_colors[panel_index:] + self._chart_colors[:panel_index], show_x_axis=panel_index == last_axis_panel_index)
+            chart, x_bounds, y_bounds = self._build_signal_chart(sampled_frame, visible_signals, self._chart_colors[panel_index:] + self._chart_colors[:panel_index], show_x_axis=panel_index == last_axis_panel_index)
             frame.view.setChart(chart)
             frame.view.set_data_bounds(x_bounds, y_bounds)
             frame.view.set_cursor_state(self.cursor_mode, self.cursor_positions)
@@ -3932,13 +4428,37 @@ class MainWindow(QMainWindow):
             for row_index, signal_name in enumerate(signals):
                 color = self._signal_color(signal_name)
                 signal_item = QTableWidgetItem(signal_name)
-                signal_item.setForeground(color)
+                signal_item.setData(PANEL_SIGNAL_BASE_COLOR_ROLE, color)
                 frame.signal_table.setItem(row_index, 0, signal_item)
-                frame.signal_table.setItem(row_index, 1, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
-                frame.signal_table.setItem(row_index, 2, QTableWidgetItem(self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
+                frame.signal_table.setItem(row_index, 1, QTableWidgetItem("" if signal_name in hidden_signals else self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[0] if self.cursor_mode >= 1 else None)))
+                frame.signal_table.setItem(row_index, 2, QTableWidgetItem("" if signal_name in hidden_signals else self._nearest_signal_value(frame_data, signal_name, self.cursor_positions[1] if self.cursor_mode >= 2 else None)))
+            frame.signal_table.set_hidden_signals(hidden_signals)
+            self._apply_chart_panel_signal_emphasis(panel)
         self._auto_adjust_signal_table_width()
         self.chart_status_label.setText(self._cursor_summary_text(frame_data))
         self._schedule_chart_layout_refresh()
+
+    def on_panel_signal_selection_changed(self, panel_id: int) -> None:
+        panel_state = self._find_chart_panel_state(panel_id)
+        if panel_state is None:
+            return
+        self._apply_chart_panel_signal_emphasis(panel_state)
+
+    def _apply_chart_panel_signal_emphasis(self, panel_state: dict[str, object]) -> None:
+        frame: ChartPanelFrame | None = panel_state.get("frame")
+        if frame is None:
+            return
+        selected_signal_names = set(frame.signal_table._selected_signal_names())
+        chart = frame.view.chart()
+        if chart is None:
+            return
+        for series in chart.series():
+            signal_name = str(series.name()).strip()
+            color = QColor(self._signal_color(signal_name))
+            if selected_signal_names and signal_name not in selected_signal_names:
+                color.setAlpha(110)
+            pen = QPen(color, 3.4 if signal_name in selected_signal_names else 1.6, Qt.PenStyle.SolidLine)
+            series.setPen(pen)
 
     def open_output_dir(self) -> None:
         output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
@@ -3952,13 +4472,17 @@ class MainWindow(QMainWindow):
         current_derived = str(self.derived_signal_editor_path) if self.derived_signal_editor_path else None
         current_kpi = str(self.kpi_editor_path) if self.kpi_editor_path else None
         current_template = str(self.template_editor_path) if self.template_editor_path else None
+        derived_editor_text = self.derived_signal_editor.toPlainText() if hasattr(self, "derived_signal_editor") else ""
+        kpi_editor_text = self.kpi_editor.toPlainText() if hasattr(self, "kpi_editor") else ""
+        derived_editor_dirty = self._derived_signal_editor_dirty
+        kpi_editor_dirty = self._kpi_editor_dirty
         current_group = str(self.kpi_group_editor_combo.currentData()) if hasattr(self, "kpi_group_editor_combo") and self.kpi_group_editor_combo.count() else "__all_kpis__"
         current_queue_group = str(self.queue_group_combo.currentData()) if hasattr(self, "queue_group_combo") and self.queue_group_combo.count() else "__all_kpis__"
         self.derived_signal_entries = list_derived_signal_spec_entries()
         self.kpi_spec_entries = list_kpi_spec_entries()
         self.kpi_groups = load_kpi_groups()
         self.template_entries = list_report_template_entries()
-        self.engine = AnalysisEngine(settings=load_analysis_settings(), runtime_logger=self._emit_runtime_log)
+        self.engine = AnalysisEngine(settings=load_analysis_settings(), runtime_logger=self._emit_runtime_log, progress_callback=self._on_engine_progress)
         self._chart_frame_cache.clear()
         self._chart_sample_cache.clear()
         derived_signals = [str(item.get("name", "")).strip() for item in self.engine.derived_signal_definitions if str(item.get("name", "")).strip()]
@@ -4001,26 +4525,29 @@ class MainWindow(QMainWindow):
         self._populate_entry_combo(self.kpi_editor_combo, self.kpi_spec_entries, current_kpi)
         self._populate_entry_combo(self.template_editor_combo, self.template_entries, current_template)
         self._populate_entry_combo(self.active_template_combo, self.template_entries, current_template)
+        self._refresh_config_directory_watch_paths()
         self._refresh_result_scope_combo()
         self.load_mapping_editor()
         if current_derived and "derived" not in preserved:
             self.load_derived_signal_file(Path(current_derived), log_message=False)
-        elif current_derived and "derived" in preserved:
+        elif current_derived and "derived" in preserved and Path(current_derived).exists():
             self.derived_signal_editor_path = Path(current_derived)
             self.derived_signal_editor_path_label.setText(current_derived)
+            self._set_editor_plain_text(self.derived_signal_editor, derived_editor_text)
             self._set_combo_to_path(self.derived_signal_editor_combo, Path(current_derived))
             self._apply_editor_protection(Path(current_derived), self.derived_signal_editor, self.derived_signal_delete_button, self.derived_signal_editor_notice, PROTECTED_DERIVED_FILES)
-            self._set_derived_signal_editor_dirty(False)
+            self._set_derived_signal_editor_dirty(derived_editor_dirty)
         elif self.derived_signal_entries:
             self.load_derived_signal_file(Path(self.derived_signal_entries[0]["path"]), log_message=False)
         if current_kpi and "kpi" not in preserved:
             self.load_kpi_file(Path(current_kpi), log_message=False)
-        elif current_kpi and "kpi" in preserved:
+        elif current_kpi and "kpi" in preserved and Path(current_kpi).exists():
             self.kpi_editor_path = Path(current_kpi)
             self.kpi_editor_path_label.setText(current_kpi)
+            self._set_editor_plain_text(self.kpi_editor, kpi_editor_text)
             self._set_combo_to_path(self.kpi_editor_combo, Path(current_kpi))
             self._apply_editor_protection(Path(current_kpi), self.kpi_editor, self.kpi_delete_button, self.kpi_editor_notice, PROTECTED_KPI_FILES)
-            self._set_kpi_editor_dirty(False)
+            self._set_kpi_editor_dirty(kpi_editor_dirty)
         elif self.kpi_spec_entries:
             self.load_kpi_file(Path(self.kpi_spec_entries[0]["path"]), log_message=False)
         if current_template and "template" not in preserved:
@@ -4049,6 +4576,7 @@ class MainWindow(QMainWindow):
             for panel in self.chart_panels:
                 signals = [signal for signal in panel["signals"] if signal in self.plot_signal_names]
                 panel["signals"] = signals
+                panel["hidden_signals"] = [signal for signal in panel.get("hidden_signals", []) if signal in signals]
             self._persist_chart_view_state()
         self._update_queue_stats()
         self.refresh_result_views()
@@ -4460,15 +4988,8 @@ class MainWindow(QMainWindow):
     def create_derived_signal_file(self) -> None:
         if not self._confirm_pending_editor_changes("derived"):
             return
-        signal_name, ok = QInputDialog.getText(self, "新增派生量", "请输入派生量 name（英文）")
-        if not ok:
-            return
-        normalized_name = signal_name.strip()
-        if not normalized_name:
-            QMessageBox.information(self, "名称为空", "请先输入派生量 name。")
-            return
         try:
-            path = create_derived_signal_draft_file(normalized_name)
+            path = create_derived_signal_draft_file()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "创建失败", str(exc))
             return
@@ -4609,45 +5130,56 @@ class MainWindow(QMainWindow):
 
     def load_mapping_editor(self) -> None:
         tables = load_interface_signal_tables()
-        system_actual_columns = max(3, max((len(list(row.get("actual_names", []))) for row in tables.get("system", [])), default=0))
-        custom_actual_columns = max(3, max((len(list(row.get("actual_names", []))) for row in tables.get("custom", [])), default=0))
-        self._mapping_actual_name_column_count = max(self._mapping_actual_name_column_count, system_actual_columns, custom_actual_columns)
-        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count, persist=False)
+        configured_counts = get_interface_mapping_actual_name_column_counts()
+        self._system_mapping_actual_name_column_count = max(configured_counts["system"], max((len(list(row.get("actual_names", []))) for row in tables.get("system", [])), default=0), 1)
+        self._custom_mapping_actual_name_column_count = max(configured_counts["custom"], max((len(list(row.get("actual_names", []))) for row in tables.get("custom", [])), default=0), 1)
+        self._rebuild_mapping_tables(persist=False)
         self._populate_mapping_table(self.system_mapping_table, tables.get("system", []), False)
         self._populate_mapping_table(self.custom_mapping_table, tables.get("custom", []), True)
         self._refresh_mapping_validation()
 
-    def _set_mapping_actual_name_column_count(self, count: int, persist: bool = True) -> None:
-        target_count = max(3, int(count or 3))
-        if getattr(self, "_mapping_actual_name_column_count", 3) == target_count and self.system_mapping_table.columnCount() == len(build_system_interface_mapping_headers(target_count)):
-            return
-        system_rows = self._extract_mapping_rows(self.system_mapping_table) if self.system_mapping_table.rowCount() else []
-        custom_rows = self._extract_mapping_rows(self.custom_mapping_table) if self.custom_mapping_table.rowCount() else []
-        self._mapping_actual_name_column_count = target_count
+    def _rebuild_mapping_tables(self, persist: bool = True, system_rows: list[dict[str, object]] | None = None, custom_rows: list[dict[str, object]] | None = None) -> None:
+        if system_rows is None:
+            system_rows = self._extract_mapping_rows(self.system_mapping_table) if self.system_mapping_table.rowCount() else []
+        if custom_rows is None:
+            custom_rows = self._extract_mapping_rows(self.custom_mapping_table) if self.custom_mapping_table.rowCount() else []
         self.system_mapping_table.blockSignals(True)
         self.custom_mapping_table.blockSignals(True)
-        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(target_count)))
-        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(target_count))
-        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(target_count)))
-        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(target_count))
+        self.system_mapping_table.setColumnCount(len(build_system_interface_mapping_headers(self._system_mapping_actual_name_column_count)))
+        self.system_mapping_table.setHorizontalHeaderLabels(build_system_interface_mapping_headers(self._system_mapping_actual_name_column_count))
+        self.custom_mapping_table.setColumnCount(len(build_custom_interface_mapping_headers(self._custom_mapping_actual_name_column_count)))
+        self.custom_mapping_table.setHorizontalHeaderLabels(build_custom_interface_mapping_headers(self._custom_mapping_actual_name_column_count))
         self.system_mapping_table.blockSignals(False)
         self.custom_mapping_table.blockSignals(False)
         self._configure_mapping_table(self.system_mapping_table)
         self._configure_mapping_table(self.custom_mapping_table)
-        if system_rows:
-            self._populate_mapping_table(self.system_mapping_table, system_rows, False)
-        if custom_rows:
-            self._populate_mapping_table(self.custom_mapping_table, custom_rows, True)
+        self._populate_mapping_table(self.system_mapping_table, system_rows, False)
+        self._populate_mapping_table(self.custom_mapping_table, custom_rows, True)
+        self._refresh_mapping_header_add_buttons()
         if persist:
             self._refresh_and_schedule_mapping_persist()
 
-    def add_mapping_actual_name_column(self) -> None:
-        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count + 1)
+    def _set_mapping_actual_name_column_count(self, table: QTableWidget, count: int, persist: bool = True, system_rows: list[dict[str, object]] | None = None, custom_rows: list[dict[str, object]] | None = None) -> None:
+        target_count = max(1, int(count or 1))
+        if table is self.system_mapping_table:
+            if self._system_mapping_actual_name_column_count == target_count and self.system_mapping_table.columnCount() == len(build_system_interface_mapping_headers(target_count)):
+                return
+            self._system_mapping_actual_name_column_count = target_count
+        else:
+            if self._custom_mapping_actual_name_column_count == target_count and self.custom_mapping_table.columnCount() == len(build_custom_interface_mapping_headers(target_count)):
+                return
+            self._custom_mapping_actual_name_column_count = target_count
+        self._rebuild_mapping_tables(persist=persist, system_rows=system_rows, custom_rows=custom_rows)
 
-    def remove_mapping_actual_name_column(self) -> None:
-        if self._mapping_actual_name_column_count <= 3:
+    def add_mapping_actual_name_column(self, table: QTableWidget | None = None) -> None:
+        source_table = table or (self.system_mapping_table if self.mapping_tabs.currentIndex() == 0 else self.custom_mapping_table)
+        self._set_mapping_actual_name_column_count(source_table, self._mapping_actual_name_column_count_for_table(source_table) + 1)
+
+    def remove_mapping_actual_name_column(self, table: QTableWidget | None = None) -> None:
+        source_table = table or (self.system_mapping_table if self.mapping_tabs.currentIndex() == 0 else self.custom_mapping_table)
+        if self._mapping_actual_name_column_count_for_table(source_table) <= 1:
             return
-        self._set_mapping_actual_name_column_count(self._mapping_actual_name_column_count - 1)
+        self._set_mapping_actual_name_column_count(source_table, self._mapping_actual_name_column_count_for_table(source_table) - 1)
 
     def _refresh_and_schedule_mapping_persist(self) -> None:
         self._refresh_mapping_validation()
@@ -4658,7 +5190,7 @@ class MainWindow(QMainWindow):
         table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             is_system_table = table is self.system_mapping_table
-            actual_names = list(row.get("actual_names", []))[: self._mapping_actual_name_column_count]
+            actual_names = list(row.get("actual_names", []))[: self._mapping_actual_name_column_count_for_table(table)]
             values = [str(row.get("standard_signal", ""))]
             if is_system_table:
                 values.append(str(row.get("description", "")))
@@ -4720,7 +5252,13 @@ class MainWindow(QMainWindow):
             return
         self._persisting_mapping = True
         try:
-            save_interface_signal_tables(self._extract_mapping_rows(self.system_mapping_table), self._extract_mapping_rows(self.custom_mapping_table), actual_name_column_count=self._mapping_actual_name_column_count)
+            save_interface_signal_tables(
+                self._extract_mapping_rows(self.system_mapping_table),
+                self._extract_mapping_rows(self.custom_mapping_table),
+                actual_name_column_count=max(self._system_mapping_actual_name_column_count, self._custom_mapping_actual_name_column_count),
+                system_actual_name_column_count=self._system_mapping_actual_name_column_count,
+                custom_actual_name_column_count=self._custom_mapping_actual_name_column_count,
+            )
             self._interface_signal_names = sorted(get_plot_signal_names())
             self.plot_signal_names = sorted({*self._interface_signal_names, *self._derived_signal_names, *self._formula_signal_names, *self._kpi_signal_names})
             self._signal_browser_all = list(self.plot_signal_names)
@@ -4805,6 +5343,7 @@ class MainWindow(QMainWindow):
         if not self._should_display_log_message(message):
             return
         palette = {
+            "debug": ("#475569", "#f8fafc", "详细"),
             "info": ("#1d4ed8", "#eff6ff", "信息"),
             "success": ("#166534", "#ecfdf5", "成功"),
             "warning": ("#b45309", "#fff7ed", "提示"),
@@ -4819,6 +5358,8 @@ class MainWindow(QMainWindow):
             f'<div style="margin:4px 0;padding:8px 10px;border-radius:10px;background:{background};color:{color};">'
             f'<span style="font-weight:700;">[{label}]</span> {html.escape(message)}{anchor_html}</div>'
         )
+        if getattr(self, "_analysis_in_progress", False):
+            self._pump_ui_during_analysis()
 
 
 def launch_app() -> None:

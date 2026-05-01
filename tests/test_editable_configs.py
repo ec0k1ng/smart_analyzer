@@ -14,6 +14,7 @@ from tcs_smart_analyzer.config.editable_configs import (
     extract_derived_signal_name_from_text,
     extract_kpi_name_from_text,
     get_config_file_paths,
+    get_interface_mapping_actual_name_column_counts,
     load_derived_signal_definitions,
     load_formula_signal_definitions,
     load_chart_view_state,
@@ -26,6 +27,7 @@ from tcs_smart_analyzer.config.editable_configs import (
     list_rule_spec_entries,
     read_text_config_file,
     rename_derived_signal_references,
+    save_interface_signal_tables,
     save_chart_view_state,
     save_kpi_group,
     sync_interface_mapping_file,
@@ -78,6 +80,7 @@ class EditableConfigTests(unittest.TestCase):
         mapping_sheet = workbook["系统信号"]
         custom_sheet = workbook["自定义信号"]
         reference_sheet = workbook["参考信息"]
+        configured_counts = get_interface_mapping_actual_name_column_counts()
         mapping_values = [mapping_sheet.cell(row=row_index, column=1).value for row_index in range(2, mapping_sheet.max_row + 1)]
         mapping_descriptions = [str(mapping_sheet.cell(row=row_index, column=2).value or "") for row_index in range(2, mapping_sheet.max_row + 1)]
         mapping_sources = [str(mapping_sheet.cell(row=row_index, column=3).value or "") for row_index in range(2, mapping_sheet.max_row + 1)]
@@ -96,7 +99,7 @@ class EditableConfigTests(unittest.TestCase):
         self.assertEqual(reference_sheet.cell(row=1, column=2).value, "from")
         self.assertTrue(any("单位" in value for value in mapping_descriptions))
         self.assertTrue(any("KPI:" in value or "派生量:" in value for value in mapping_sources))
-        self.assertEqual(custom_sheet.max_column, 4)
+        self.assertEqual(custom_sheet.max_column, 1 + configured_counts["custom"])
         self.assertGreater(float(mapping_sheet.column_dimensions["A"].width), 10.0)
 
     def test_interface_mapping_file_removes_stale_system_signals(self) -> None:
@@ -122,6 +125,35 @@ class EditableConfigTests(unittest.TestCase):
         self.assertTrue(any(row["required_by"] for row in tables["system"]))
         vehicle_speed_row = next(row for row in tables["system"] if row["standard_signal"] == "vehicle_speed_kph")
         self.assertIn("单位", str(vehicle_speed_row.get("description", "")))
+
+    def test_interface_mapping_sync_preserves_explicit_time_alias(self) -> None:
+        config_paths = get_config_file_paths()
+        mapping_path = config_paths["interface_mapping"]
+        backup = mapping_path.read_bytes() if mapping_path.exists() else None
+        try:
+            tables = load_interface_signal_tables()
+            counts = get_interface_mapping_actual_name_column_counts()
+            time_row = next(row for row in tables["system"] if row["standard_signal"] == "time_s")
+            time_row["actual_names"] = ["time"]
+
+            save_interface_signal_tables(
+                tables["system"],
+                tables["custom"],
+                actual_name_column_count=max(counts.values()),
+                system_actual_name_column_count=counts["system"],
+                custom_actual_name_column_count=counts["custom"],
+            )
+            sync_interface_mapping_file()
+
+            persisted_tables = load_interface_signal_tables()
+            persisted_time_row = next(row for row in persisted_tables["system"] if row["standard_signal"] == "time_s")
+            self.assertEqual(persisted_time_row["actual_names"], ["time"])
+        finally:
+            if backup is None:
+                if mapping_path.exists():
+                    mapping_path.unlink()
+            else:
+                mapping_path.write_bytes(backup)
 
     def test_derived_signal_definitions_include_algorithm_summary(self) -> None:
         definitions = load_derived_signal_definitions()
@@ -297,10 +329,18 @@ def calculate_kpi_series(dataframe):
             self.assertIn("IS_TEMPLATE = False", content)
             self.assertIn(f'"name": "{path.stem}"', content)
             self.assertIn(f'"trend_source": "{path.stem}"', content)
+            self.assertIn('"unknown_message": "该 KPI 结果为空时显示的话，可选"', content)
             self.assertEqual(extract_kpi_name_from_text(content), path.stem)
         finally:
             if path.exists():
                 path.unlink()
+
+    def test_kpi_guide_mentions_unknown_result_handling(self) -> None:
+        config_paths = get_config_file_paths()
+        guide_text = read_text_config_file(config_paths["kpi_specs_dir"] / "00_example_and_guide.py")
+
+        self.assertIn("unknown_message", guide_text)
+        self.assertIn("标成“未知”", guide_text)
 
     def test_loading_kpi_entries_auto_renames_misaligned_file_name(self) -> None:
         config_paths = get_config_file_paths()

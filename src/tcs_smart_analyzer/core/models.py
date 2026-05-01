@@ -19,7 +19,7 @@ class AnalysisContext:
 class KpiResult:
     name: str
     title: str
-    value: float
+    value: float | None
     unit: str
     description: str
     signal_values: pd.Series | None = None

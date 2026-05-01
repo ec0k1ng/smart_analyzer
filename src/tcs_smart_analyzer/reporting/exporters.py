@@ -47,8 +47,8 @@ DEFAULT_HTML_TEMPLATE = Template(
       --file-bg: #f6f9fc;
       --pass-bg: #ecfdf5;
       --pass-ink: #166534;
-      --warning-bg: #fff7ed;
-      --warning-ink: #b45309;
+    --warning-bg: #fef3c7;
+    --warning-ink: #92400e;
       --fail-bg: #fff1f2;
       --fail-ink: #b91c1c;
     }
@@ -469,7 +469,7 @@ def export_word(
             if status == "pass":
                 _set_cell_shading(row[5], "ECFDF5")
             elif status == "warning":
-                _set_cell_shading(row[5], "FFF7ED")
+                _set_cell_shading(row[5], "FEF3C7")
             else:
                 _set_cell_shading(row[5], "FFF1F2")
             for cell in row:

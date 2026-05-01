@@ -57,6 +57,8 @@ def calculate_kpi_series(dataframe):
 - 所有可调算法参数都应集中放在 CALIBRATION 区块，放在 KPI_DEFINITION 之后、函数之前；不要把标定量零散写在文件顶部和函数内部。
 - CALIBRATION 里的键名请使用 snake_case，并尽量把物理意义、工况或单位写进名字；每个条目右侧都要写中文注释。
 - pass_condition：通过判断字段，使用 Python 表达式；可直接引用 value、threshold、dataframe、np、pd、math、source_path、source_name、source_stem、analysis_profile、generated_at、mapped_columns。
+- 如果 calculate_kpi 返回 None、NaN 或无穷值，框架会自动把该 KPI 标成“未知”，并使用黄色警告样式；这时不会再继续执行 pass_condition。
+- unknown_message：可选字段，用于覆盖“未知”状态下的提示文案。
 - rule_description：展示给工程人员看的规则描述。
 - dataframe 是标准化后的分析数据表，里面既包含原始标准信号，也包含当前分析所需、已经按依赖顺序算好的派生量。
 - dataframe.attrs["source_name"]：当前分析文件名，例如 demo.csv。
@@ -76,7 +78,7 @@ def calculate_kpi_series(dataframe):
 3. tcs_target_slip_kph - TCS全局目标打滑量 - 对所有 TCS 激活区间内的 |slip_kph| 按时间差做加权平均，输出单个目标打滑量标量。
 
 当前接口映射表中的标准输入量：
-1. time_s - 时间轴，单位 s，必须配置且固定排在第一行。
+1. time_s - 时间轴，单位 s。
 2. abs_active_fl - 左前轮 ABS 激活标志，布尔/0-1。
 3. abs_active_fr - 右前轮 ABS 激活标志，布尔/0-1。
 4. abs_active_rl - 左后轮 ABS 激活标志，布尔/0-1。

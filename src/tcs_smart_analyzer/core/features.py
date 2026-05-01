@@ -90,7 +90,7 @@ def _execute_plugin_callable(
 def _coerce_kpi_signal_series(
     plugin: dict[str, object],
     dataframe: pd.DataFrame,
-    metric_value: float,
+    metric_value: float | None,
     runtime_logger=None,
 ) -> pd.Series | None:
     calculate_kpi_series = plugin.get("calculate_kpi_series")
@@ -116,7 +116,18 @@ def _coerce_kpi_signal_series(
 
     if dataframe.empty:
         return None
-    return pd.Series([float(metric_value)] * len(dataframe), index=dataframe.index, dtype=float)
+    fill_value = np.nan if metric_value is None else float(metric_value)
+    return pd.Series([fill_value] * len(dataframe), index=dataframe.index, dtype=float)
+
+
+def _normalize_kpi_value(metric_value: object) -> float | None:
+    try:
+        numeric_value = float(metric_value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(numeric_value):
+        return None
+    return numeric_value
 
 
 def _coerce_derived_signal_series(dataframe: pd.DataFrame, result: object) -> pd.Series:
@@ -189,7 +200,7 @@ def calculate_global_kpis(
     kpis: list[KpiResult] = []
     for plugin in (kpi_plugins or load_kpi_plugins()):
         definition = plugin["definition"]
-        metric_value = _execute_plugin_callable(
+        metric_value_raw = _execute_plugin_callable(
             plugin["calculate_kpi"],
             dataframe,
             owner_kind="KPI",
@@ -198,13 +209,14 @@ def calculate_global_kpis(
             plugin_path=Path(plugin.get("path") or definition.get("module_path", "")),
             runtime_logger=runtime_logger,
         )
+        metric_value = _normalize_kpi_value(metric_value_raw)
         kpi_name = str(definition.get("name", "unnamed_kpi"))
         threshold_default = definition.get("threshold")
         threshold_value = None if threshold_default is None else float(settings.get_rule_threshold(kpi_name, threshold_default) if settings is not None else threshold_default)
         threshold_source = str(settings.get_rule_threshold_source(kpi_name, str(definition.get("source", "kpi_definition"))) if settings is not None else definition.get("source", "kpi_definition"))
         pass_condition = str(definition.get("pass_condition", "True"))
         evaluation_context = {
-            "value": float(metric_value),
+            "value": metric_value,
             "threshold": threshold_value,
             "dataframe": dataframe,
             "source_path": str(dataframe.attrs.get("source_path", "")),
@@ -214,20 +226,27 @@ def calculate_global_kpis(
             "generated_at": str(dataframe.attrs.get("generated_at", "")),
             "mapped_columns": dict(dataframe.attrs.get("mapped_columns", {})),
         }
-        passed = bool(_safe_eval(pass_condition, evaluation_context)) if pass_condition else True
-        result_label = "达标" if passed else "未达标"
-        signal_values = _coerce_kpi_signal_series(plugin, dataframe, float(metric_value), runtime_logger=runtime_logger)
+        if metric_value is None:
+            status = "warning"
+            result_label = "未知"
+            assessment_message = str(definition.get("unknown_message", "该 KPI 结果为空，当前工况下无法判断。"))
+        else:
+            passed = bool(_safe_eval(pass_condition, evaluation_context)) if pass_condition else True
+            status = "pass" if passed else "fail"
+            result_label = "达标" if passed else "未达标"
+            assessment_message = str(definition.get("pass_message", "该 KPI 达标") if passed else definition.get("fail_message", "该 KPI 未达标"))
+        signal_values = _coerce_kpi_signal_series(plugin, dataframe, metric_value, runtime_logger=runtime_logger)
         kpis.append(
             KpiResult(
                 name=kpi_name,
                 title=str(definition.get("title", kpi_name)),
-                value=float(metric_value),
+                value=metric_value,
                 unit=str(definition.get("unit", "")),
                 description=str(definition.get("description", "")),
-            signal_values=signal_values,
+                signal_values=signal_values,
                 rule_description=str(definition.get("rule_description", "仅做趋势观测，不设置限制")),
-                status="pass" if passed else "fail",
-                assessment_message=str(definition.get("pass_message", "该 KPI 达标") if passed else definition.get("fail_message", "该 KPI 未达标")),
+                status=status,
+                assessment_message=assessment_message,
                 threshold_value=threshold_value,
                 threshold_source=threshold_source,
                 pass_condition=pass_condition,
@@ -244,7 +263,7 @@ def build_rule_results_from_kpis(kpis: list[KpiResult]) -> list[RuleResult]:
             category="kpi_assessment",
             title=item.title,
             status=item.status,
-            severity="info" if item.status == "pass" else "high",
+            severity="info" if item.status == "pass" else "medium" if item.status == "warning" else "high",
             measured_value=item.value,
             threshold_value=item.threshold_value,
             unit=item.unit,

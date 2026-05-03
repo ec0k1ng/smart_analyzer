@@ -14,6 +14,7 @@ from tcs_smart_analyzer.data.loaders import (
     _build_can_message_lookup,
     _decode_can_message,
     _load_can_databases,
+    inspect_timeseries_file_columns,
     load_timeseries_file,
 )
 
@@ -54,6 +55,29 @@ class LoaderTests(unittest.TestCase):
 
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
             self.assertEqual(len(dataframe), 2)
+
+    def test_text_dat_file_can_be_column_filtered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.dat"
+            path.write_text("time_s\twheel_speed_fl\twheel_speed_fr\n0.0\t10\t11\n0.1\t12\t13\n", encoding="utf-8")
+
+            dataframe = load_timeseries_file(path, selected_source_columns=["time_s", "wheel_speed_fr"])
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fr"])
+            self.assertEqual(len(dataframe), 2)
+
+    def test_dat_file_columns_can_be_inspected_before_loading(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.dat"
+            path.write_text("Time\twheel_speed_fl\twheel_speed_fr\n0.0\t10\t11\n0.1\t12\t13\n", encoding="utf-8")
+
+            inspected = inspect_timeseries_file_columns(path)
+
+            self.assertIsNotNone(inspected)
+            header_columns, original_columns, redirects = inspected
+            self.assertIn("time_s", header_columns)
+            self.assertIn("Time", original_columns)
+            self.assertEqual(redirects.get("Time"), "time_s")
 
     def test_dat_protocol_suffix_is_removed_from_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

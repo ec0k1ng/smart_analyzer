@@ -198,7 +198,9 @@ class AnalysisEngine:
         mapping_candidates = describe_mapping_candidates(self.required_raw_input_signals)
         mapping: dict[str, str] | None = None
         dataframe: pd.DataFrame
-        if source_path.suffix.lower() in {".csv", ".xlsx", ".xls"}:
+        source_suffix = source_path.suffix.lower()
+        inspection_supported_suffixes = {".csv", ".xlsx", ".xls", ".dat", ".mdf", ".mf4"}
+        if source_suffix in inspection_supported_suffixes:
             self._emit_progress(0.08, f"分析中 {source_path.name} - 初步预映射")
             self._emit_runtime_log("debug", f"确认所需信号完成: 共 {len(self.required_raw_input_signals)} 项")
             for standard_name, candidate_names in mapping_candidates.items():
@@ -211,34 +213,45 @@ class AnalysisEngine:
                 self._emit_runtime_log("debug", f"初步预映射: {standard_name} <- {' | '.join(display_candidates)}")
 
             inspected = inspect_timeseries_file_columns(source_path)
-            if inspected is None:
-                raise ValueError(f"无法读取文件表头以确认实际映射: {source_path.name}")
-            header_columns, original_columns, source_column_redirects = inspected
-            self._emit_progress(0.16, f"分析中 {source_path.name} - 确认实际映射")
-            mapping = build_signal_mapping(
-                header_columns,
-                self.required_raw_input_signals,
-                source_column_redirects=source_column_redirects,
-                source_columns_before_time_normalization=original_columns,
-            )
-            self._emit_runtime_log("debug", f"接口映射确认完成: 已从实际数据中命中 {len(mapping)} 个信号")
-            for standard_name, column_name in mapping.items():
-                display_column = self._mapping_log_display_name(column_name, source_column_redirects=source_column_redirects)
-                self._emit_runtime_log("debug", f"接口映射: {standard_name} -> {display_column}")
+            if inspected is not None:
+                header_columns, original_columns, source_column_redirects = inspected
+                self._emit_progress(0.16, f"分析中 {source_path.name} - 确认实际映射")
+                mapping = build_signal_mapping(
+                    header_columns,
+                    self.required_raw_input_signals,
+                    source_column_redirects=source_column_redirects,
+                    source_columns_before_time_normalization=original_columns,
+                )
+                self._emit_runtime_log("debug", f"接口映射确认完成: 已从实际数据中命中 {len(mapping)} 个信号")
+                for standard_name, column_name in mapping.items():
+                    display_column = self._mapping_log_display_name(column_name, source_column_redirects=source_column_redirects)
+                    self._emit_runtime_log("debug", f"接口映射: {standard_name} -> {display_column}")
 
-            selected_source_columns = list_source_columns_for_mapping(mapping, source_column_redirects=source_column_redirects)
-            self._emit_runtime_log(
-                "debug",
-                f"将只读取最终命中的 {len(selected_source_columns)} 个原始列: {', '.join(selected_source_columns[:20])}{' ...' if len(selected_source_columns) > 20 else ''}",
-            )
-            self._emit_progress(0.24, f"分析中 {source_path.name} - 读取已确认信号列")
-            self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
-            dataframe = load_timeseries_file(
-                source_path,
-                required_signals=requested_signal_names,
-                selected_source_columns=selected_source_columns,
-            )
+                selected_source_columns = list_source_columns_for_mapping(mapping, source_column_redirects=source_column_redirects)
+                self._emit_runtime_log(
+                    "debug",
+                    f"将只读取最终命中的 {len(selected_source_columns)} 个原始列/通道: {', '.join(selected_source_columns[:20])}{' ...' if len(selected_source_columns) > 20 else ''}",
+                )
+                self._emit_progress(0.24, f"分析中 {source_path.name} - 读取已确认信号列")
+                self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
+                dataframe = load_timeseries_file(
+                    source_path,
+                    required_signals=requested_signal_names,
+                    selected_source_columns=selected_source_columns,
+                )
+            else:
+                self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
+                self._emit_progress(0.18, f"分析中 {source_path.name} - 读取数据文件")
+                dataframe = load_timeseries_file(
+                    source_path,
+                    required_signals=requested_signal_names,
+                )
         else:
+            if source_suffix in {".blf", ".asc"}:
+                self._emit_runtime_log(
+                    "debug",
+                    f"总线日志采用按需 DBC 解码：将只尝试解码所需信号涉及的报文，不会展开全部总线信号。当前所需信号候选共 {len(requested_signal_names)} 项。",
+                )
             self._emit_runtime_log("debug", f"读取数据文件: {source_path}")
             self._emit_progress(0.18, f"分析中 {source_path.name} - 读取数据文件")
             dataframe = load_timeseries_file(
@@ -261,7 +274,7 @@ class AnalysisEngine:
             source_column_redirects=dict(dataframe.attrs.get("source_column_redirects", {})),
             source_columns_before_time_normalization=dataframe.attrs.get("source_columns_before_time_normalization", dataframe.columns),
         )
-        if source_path.suffix.lower() not in {".csv", ".xlsx", ".xls"}:
+        if source_suffix not in inspection_supported_suffixes:
             self._emit_runtime_log("debug", f"接口映射完成: 已命中 {len(mapping)} 个信号")
             for standard_name, column_name in mapping.items():
                 display_column = self._mapping_log_display_name(

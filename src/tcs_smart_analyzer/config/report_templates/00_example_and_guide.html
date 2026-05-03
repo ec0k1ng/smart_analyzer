@@ -51,6 +51,7 @@
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="utf-8">
     <title>{{ report_title }}</title>
@@ -71,78 +72,437 @@
             --fail-bg: #fff1f2;
             --fail-ink: #b91c1c;
         }
-        body { font-family: "Microsoft YaHei", sans-serif; margin: 0; background: linear-gradient(180deg, #f4f8fb, #eef4f7); color: var(--ink); }
-        .page { max-width: 1180px; margin: 0 auto; padding: 28px; }
-        .hero { padding: 22px 24px; border: 1px solid #cfe2ef; border-radius: 22px; background: linear-gradient(135deg, var(--hero-a), var(--hero-b)); box-shadow: 0 12px 32px rgba(24,48,70,0.08); margin-bottom: 22px; }
-        .hero h1 { margin: 0 0 12px 0; font-size: 30px; color: #0c4a6e; }
-        .hero-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-        .hero-card { background: rgba(255,255,255,0.7); border: 1px solid rgba(207,226,239,0.9); border-radius: 16px; padding: 12px 14px; }
-        .hero-card .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-        .hero-card .value { font-weight: 700; color: var(--ink); }
-        .section-title { margin: 26px 0 12px 0; font-size: 18px; color: #0f4c81; }
-        .result-card { margin-bottom: 20px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 8px 20px rgba(15, 76, 129, 0.05); }
-        .group-bar { padding: 11px 16px; background: var(--group-bg); color: var(--group-ink); font-weight: 800; }
-        .file-bar { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; background: var(--file-bg); color: #334155; border-top: 1px solid var(--line); }
-        .file-name { font-weight: 700; }
-        .file-summary { color: var(--muted); font-size: 13px; }
-        table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-        th, td { border-top: 1px solid var(--line); padding: 9px 10px; font-size: 13px; vertical-align: top; }
-        th { background: #f7fbff; text-align: left; color: #23415c; }
-        td.col-unit, th.col-unit { width: 88px; text-align: center; }
-        td.col-value, th.col-value { width: 120px; text-align: right; }
-        td.col-result, th.col-result { width: 104px; text-align: center; }
-        .result-pill { display: inline-block; min-width: 72px; padding: 4px 10px; border-radius: 999px; font-weight: 800; }
-        .result-pill.pass { background: var(--pass-bg); color: var(--pass-ink); }
-        .result-pill.warning { background: var(--warning-bg); color: var(--warning-ink); }
-        .result-pill.fail { background: var(--fail-bg); color: var(--fail-ink); }
+
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            margin: 0;
+            background: linear-gradient(180deg, #f4f8fb, #eef4f7);
+            color: var(--ink);
+        }
+
+        .layout {
+            min-height: 100vh;
+        }
+
+        .page {
+            width: min(1180px, calc(100vw - 404px));
+            margin: 0 auto;
+            padding: 24px 0 28px;
+        }
+
+        .toc-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 290px;
+            padding: 18px 14px 18px 16px;
+            border-right: 1px solid var(--line);
+            border-radius: 0 26px 26px 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(241, 248, 255, 0.96));
+            box-shadow: 0 18px 42px rgba(24, 48, 70, 0.14);
+            overflow: hidden;
+            z-index: 15;
+            transition: transform 220ms ease, box-shadow 220ms ease;
+        }
+
+        .toc-toggle {
+            position: fixed;
+            left: -9999px;
+        }
+
+        .toc-fab {
+            position: fixed;
+            left: 306px;
+            top: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid #c9dceb;
+            background: rgba(255, 255, 255, 0.96);
+            color: #0f4c81;
+            box-shadow: 0 12px 28px rgba(24, 48, 70, 0.12);
+            cursor: pointer;
+            z-index: 20;
+            font-size: 13px;
+            font-weight: 800;
+            transition: left 220ms ease, transform 220ms ease;
+        }
+
+        .toc-fab:hover {
+            transform: translateY(-1px);
+        }
+
+        .toc-fab-close {
+            display: inline;
+        }
+
+        .toc-fab-open {
+            display: none;
+        }
+
+        .toc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 16px 18px;
+            background: linear-gradient(180deg, #f8fbff, #edf6ff);
+            color: #0f4c81;
+            font-weight: 800;
+            font-size: 16px;
+            border-radius: 18px;
+        }
+
+        .toc-badge {
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .toc-nav {
+            padding: 14px 8px 18px 4px;
+            max-height: calc(100vh - 118px);
+            overflow: auto;
+        }
+
+        .toc-group {
+            margin-bottom: 14px;
+        }
+
+        .toc-group-link {
+            display: block;
+            text-decoration: none;
+            color: #0f4c81;
+            font-weight: 800;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: #edf6ff;
+            border: 1px solid #cfe2ef;
+        }
+
+        .toc-file-list {
+            list-style: none;
+            margin: 8px 0 0 0;
+            padding: 0 0 0 10px;
+        }
+
+        .toc-file-list li {
+            margin: 6px 0;
+        }
+
+        .toc-file-link {
+            display: block;
+            text-decoration: none;
+            color: #31485d;
+            padding: 6px 10px;
+            border-radius: 10px;
+        }
+
+        .toc-file-link:hover,
+        .toc-group-link:hover {
+            background: #dff0ff;
+        }
+
+        .toc-toggle:not(:checked)~.toc-sidebar {
+            transform: translateX(-100%);
+            box-shadow: none;
+        }
+
+        .toc-toggle:not(:checked)~.toc-fab {
+            left: 14px;
+        }
+
+        .toc-toggle:not(:checked)~.toc-fab .toc-fab-close {
+            display: none;
+        }
+
+        .toc-toggle:not(:checked)~.toc-fab .toc-fab-open {
+            display: inline;
+        }
+
+        .hero {
+            padding: 22px 24px;
+            border: 1px solid #cfe2ef;
+            border-radius: 22px;
+            background: linear-gradient(135deg, var(--hero-a), var(--hero-b));
+            box-shadow: 0 12px 32px rgba(24, 48, 70, 0.08);
+            margin-bottom: 22px;
+        }
+
+        .hero h1 {
+            margin: 0 0 12px 0;
+            font-size: 30px;
+            color: #0c4a6e;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px;
+        }
+
+        .hero-card {
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(207, 226, 239, 0.9);
+            border-radius: 16px;
+            padding: 12px 14px;
+        }
+
+        .hero-card .label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .hero-card .value {
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        .section-title {
+            margin: 26px 0 12px 0;
+            font-size: 18px;
+            color: #0f4c81;
+        }
+
+        .group-section {
+            margin-bottom: 28px;
+            scroll-margin-top: 24px;
+        }
+
+        .result-card {
+            margin-bottom: 20px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 8px 20px rgba(15, 76, 129, 0.05);
+        }
+
+        .group-bar {
+            padding: 11px 16px;
+            background: var(--group-bg);
+            color: var(--group-ink);
+            font-weight: 800;
+        }
+
+        .file-bar {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 12px 16px;
+            background: var(--file-bg);
+            color: #334155;
+            border-top: 1px solid var(--line);
+        }
+
+        .file-name {
+            font-weight: 700;
+        }
+
+        .file-summary {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .chart-preview {
+            padding: 14px 16px 8px 16px;
+            background: #ffffff;
+        }
+
+        .chart-preview img {
+            width: 100%;
+            border: 1px solid #dbe7f1;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #fcfdff, #f5f9fc);
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            border-top: 1px solid var(--line);
+            padding: 9px 10px;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        th {
+            background: #f7fbff;
+            text-align: left;
+            color: #23415c;
+        }
+
+        td.col-unit,
+        th.col-unit {
+            width: 88px;
+            text-align: center;
+        }
+
+        td.col-value,
+        th.col-value {
+            width: 120px;
+            text-align: right;
+        }
+
+        td.col-result,
+        th.col-result {
+            width: 104px;
+            text-align: center;
+        }
+
+        .result-pill {
+            display: inline-block;
+            min-width: 72px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 800;
+        }
+
+        .result-pill.pass {
+            background: var(--pass-bg);
+            color: var(--pass-ink);
+        }
+
+        .result-pill.warning {
+            background: var(--warning-bg);
+            color: var(--warning-ink);
+        }
+
+        .result-pill.fail {
+            background: var(--fail-bg);
+            color: var(--fail-ink);
+        }
+
+        @media (max-width: 1080px) {
+            .layout {
+                min-height: auto;
+            }
+
+            .page {
+                width: auto;
+                margin: 70px 18px 0 18px;
+                padding: 0 0 24px;
+            }
+
+            .toc-sidebar {
+                width: min(310px, calc(100vw - 34px));
+                top: 58px;
+                bottom: 18px;
+                left: 12px;
+                border-radius: 22px;
+            }
+
+            .toc-fab {
+                left: 14px;
+                top: 12px;
+            }
+
+            .toc-nav {
+                max-height: calc(100vh - 170px);
+            }
+
+        }
     </style>
 </head>
-<body>
-    <div class="page">
-        <section class="hero">
-            <h1>{{ report_title }}</h1>
-            <div class="hero-grid">
-                <div class="hero-card"><div class="label">汇总文件数</div><div class="value">{{ file_count }}</div></div>
-                <div class="hero-card"><div class="label">分析配置</div><div class="value">{{ analysis_profile }}</div></div>
-                <div class="hero-card"><div class="label">分析摘要</div><div class="value">{{ report_summary }}</div></div>
-                <div class="hero-card"><div class="label">生成时间</div><div class="value">{{ generated_at }}</div></div>
-            </div>
-        </section>
 
-        <div class="section-title">分析结果</div>
-        {% for item in results %}
-        <section class="result-card">
-            <div class="group-bar">{{ item.group_name }}</div>
-            <div class="file-bar">
-                <div class="file-name">{{ item.source_name }}</div>
-                <div class="file-summary">KPI 项数：{{ item.kpi_count }}</div>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>KPI</th>
-                        <th>描述</th>
-                        <th class="col-unit">单位</th>
-                        <th class="col-value">数值</th>
-                        <th>达标要求</th>
-                        <th class="col-result">结果</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for kpi in item.kpis %}
-                    <tr>
-                        <td>{{ kpi.title }}</td>
-                        <td>{{ kpi.description }}</td>
-                        <td class="col-unit">{{ kpi.unit }}</td>
-                        <td class="col-value">{{ kpi.value_text }}</td>
-                        <td>{{ kpi.rule_description }}</td>
-                        <td class="col-result"><span class="result-pill {{ kpi.status }}">{{ kpi.result_label }}</span></td>
-                    </tr>
+<body>
+    <div class="layout">
+        {% if grouped_results %}
+        <input id="toc-toggle" class="toc-toggle" type="checkbox" checked>
+        <label class="toc-fab" for="toc-toggle"><span class="toc-fab-close">隐藏目录</span><span
+                class="toc-fab-open">显示目录</span></label>
+        <aside class="toc-sidebar">
+            <div class="toc-header"><span>目录</span><span class="toc-badge">KPI 分组 / 数据名称</span></div>
+            <nav class="toc-nav">
+                {% for group in grouped_results %}
+                <div class="toc-group">
+                    <a class="toc-group-link" href="#{{ group['group_anchor'] }}">{{ group['group_name'] }}</a>
+                    <ul class="toc-file-list">
+                        {% for item in group['items'] %}
+                        <li><a class="toc-file-link" href="#{{ item['file_anchor'] }}">{{ item.source_name }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
                 {% endfor %}
-                </tbody>
-            </table>
-        </section>
-        {% endfor %}
+            </nav>
+        </aside>
+        {% endif %}
+        <div class="page">
+            <section class="hero">
+                <h1>{{ report_title }}</h1>
+                <div class="hero-grid">
+                    <div class="hero-card">
+                        <div class="label">汇总文件数</div>
+                        <div class="value">{{ file_count }}</div>
+                    </div>
+                    <div class="hero-card">
+                        <div class="label">分析配置</div>
+                        <div class="value">{{ analysis_profile }}</div>
+                    </div>
+                    <div class="hero-card">
+                        <div class="label">分析摘要</div>
+                        <div class="value">{{ report_summary }}</div>
+                    </div>
+                    <div class="hero-card">
+                        <div class="label">生成时间</div>
+                        <div class="value">{{ generated_at }}</div>
+                    </div>
+                </div>
+            </section>
+            <div class="section-title">分析结果</div>
+            {% for group in grouped_results %}
+            <section class="group-section" id="{{ group['group_anchor'] }}">
+                <div class="group-bar">{{ group['group_name'] }}</div>
+                {% for item in group['items'] %}
+                <section class="result-card" id="{{ item['file_anchor'] }}">
+                    <div class="file-bar">
+                        <div class="file-name">{{ item.source_name }}</div>
+                        <div class="file-summary">KPI 项数：{{ item.kpi_count }}</div>
+                    </div>
+                    {% if item.chart_preview_data_uri %}
+                    <div class="chart-preview">
+                        <img src="{{ item.chart_preview_data_uri }}" alt="{{ item.source_name }} 曲线工作表1预览">
+                    </div>
+                    {% endif %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>KPI</th>
+                                <th>描述</th>
+                                <th class="col-unit">单位</th>
+                                <th class="col-value">数值</th>
+                                <th>达标要求</th>
+                                <th class="col-result">结果</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for kpi in item.kpis %}
+                            <tr>
+                                <td>{{ kpi.title }}</td>
+                                <td>{{ kpi.description }}</td>
+                                <td class="col-unit">{{ kpi.unit }}</td>
+                                <td class="col-value">{{ kpi.value_text }}</td>
+                                <td>{{ kpi.rule_description }}</td>
+                                <td class="col-result"><span class="result-pill {{ kpi.status }}">{{ kpi.result_label
+                                        }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </section>
+                {% endfor %}
+            </section>
+            {% endfor %}
+        </div>
     </div>
 </body>
+
 </html>

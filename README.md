@@ -1,6 +1,6 @@
 # TCS Smart Analyzer
 
-离线运行的 TCS 打滑控制数据分析桌面工具。当前项目已经具备“导入数据、接口映射、派生量计算、KPI 计算、结果审阅、曲线核查、HTML/Word 汇总导出”的完整闭环，但仍处于持续工程化阶段，文档和代码都必须按当前事实维护，不允许再依赖旧会话记忆或历史设计猜测。
+离线运行的 TCS 打滑控制数据分析桌面工具。当前项目已经具备“导入数据、接口映射、派生量计算、KPI 计算、结果审阅、曲线核查、HTML/Word 汇总导出”的完整闭环，当前仓库状态已整理到发布候选阶段，文档和代码都必须按当前事实维护，不允许再依赖旧会话记忆或历史设计猜测。
 
 ## 先看哪里
 
@@ -41,7 +41,7 @@ docs/README.md 给出了完整文档导航和阅读说明。
 - 支持 GUI 工作台内编辑派生量、KPI、报告模板和接口映射。
 - 支持曲线页多面板、信号搜索、多选拖拽、跨面板转移、横轴联动缩放。
 - 支持运行日志、错误跳转、算法 print 输出收集。
-- 支持 HTML 与 Word 汇总报告导出。
+- 支持 HTML 与 Word 汇总报告导出，并带分组目录与曲线截图。
 - 支持外部 JSON 分析配置覆盖阈值、来源和启停状态。
 
 ## 当前真实配置模型
@@ -105,10 +105,18 @@ tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
 - 本机当前验证解释器路径：c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe
 - sample_data/tcs_demo.csv 是主样例输入
 - tests/test_dat_tcs.xlsx 是真实 Excel 样例
-- 当前最近一次聚焦回归验证为：pytest tests/test_editable_configs.py tests/test_engine_pipeline.py tests/test_rule_settings.py，32 项通过
-- 本轮已额外做过离屏定向验证：子框信号 Ctrl+W 局部隐藏/显示、hidden_signals 持久化、接口映射真实信号列可缩减到 1 列，均通过
-- scripts/gui_smoke_check.py 仍是现有 GUI 离屏冒烟入口，但当前不应再把“整套冒烟已通过”写成最新事实
-- 用户机器上仍有“分析后曲线页首次显示可能不完整”的反馈，代码已加入延后布局收尾和切到曲线页主动刷新，但仍需真实机回归确认
+- 当前发布前推荐聚焦回归为：pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py tests/test_rule_settings.py tests/test_exporters.py
+- scripts/gui_smoke_check.py 仍是现有 GUI 离屏冒烟入口
+- exporters.py、main_window.py、engine.py、loaders.py、editable_configs.py 都应纳入发布前 py_compile 检查
+- 本轮已经完成 Word/HTML 报告目录、曲线截图、模板工作台和 Word 目录跳转相关收口
+
+## 发布前建议
+
+```powershell
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py tests/test_rule_settings.py tests/test_exporters.py
+$env:QT_QPA_PLATFORM='offscreen'; c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe scripts/gui_smoke_check.py
+c:/Users/Ecoking/Desktop/smart_analyzer/smart_analyzer/.venv/Scripts/python.exe -m py_compile src/tcs_smart_analyzer/ui/main_window.py src/tcs_smart_analyzer/reporting/exporters.py src/tcs_smart_analyzer/core/engine.py src/tcs_smart_analyzer/data/loaders.py src/tcs_smart_analyzer/config/editable_configs.py
+```
 
 ## 不要再写进文档的旧说法
 

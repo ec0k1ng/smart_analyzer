@@ -12,6 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from jinja2 import Environment, TemplateSyntaxError
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Protection
 
@@ -267,14 +268,20 @@ DEFAULT_REPORT_TEMPLATE = '''<!DOCTYPE html>
   <meta charset="utf-8">
   <title>{{ report_title }}</title>
   <style>
-    body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #1f2937; }
-    h1, h2 { color: #155e75; }
-    .hero { padding: 16px 18px; background: linear-gradient(135deg, #ecfeff, #e0f2fe); border: 1px solid #bae6fd; margin-bottom: 18px; }
-    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-    .card { min-width: 180px; padding: 12px; border: 1px solid #dbeafe; background: #f8fafc; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 13px; }
-    th { background: #f0f9ff; text-align: left; }
+        body { font-family: "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; color: #1f2937; background: linear-gradient(180deg, #f4f8fb, #eef4f7); }
+        .hero { padding: 18px 20px; background: linear-gradient(135deg, #ecfeff, #e0f2fe); border: 1px solid #bae6fd; border-radius: 18px; margin-bottom: 18px; }
+        .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+        .card { min-width: 180px; padding: 12px; border: 1px solid #dbeafe; background: #f8fafc; border-radius: 12px; }
+        .toc { margin-bottom: 18px; padding: 14px 16px; border: 1px solid #dbeafe; background: #ffffff; border-radius: 14px; }
+        .toc a { display: inline-block; margin: 0 8px 8px 0; padding: 6px 10px; border-radius: 999px; background: #e0f2fe; color: #0c4a6e; text-decoration: none; font-weight: 700; }
+        .group-title { margin: 24px 0 10px 0; padding: 10px 14px; background: #e0f2fe; color: #0c4a6e; font-weight: 700; border-radius: 12px; }
+        .result-card { margin-bottom: 22px; border: 1px solid #dbeafe; border-radius: 14px; overflow: hidden; background: #ffffff; }
+        .file-bar { padding: 10px 14px; background: #f8fafc; color: #334155; font-weight: 600; border-top: 1px solid #e2e8f0; }
+        .preview { padding: 12px 14px 6px 14px; }
+        .preview img { width: 100%; border: 1px solid #dbeafe; border-radius: 12px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 0; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 13px; }
+        th { background: #f0f9ff; text-align: left; }
   </style>
 </head>
 <body>
@@ -287,21 +294,31 @@ DEFAULT_REPORT_TEMPLATE = '''<!DOCTYPE html>
   </div>
 
   <div class="cards">
-        <div class="card"><strong>文件数</strong><div>{{ file_count }}</div></div>
-        <div class="card"><strong>KPI 结果数</strong><div>{{ kpis|length }}</div></div>
-        <div class="card"><strong>规则数</strong><div>{{ rules|length }}</div></div>
-        <div class="card"><strong>分组条目数</strong><div>{{ results|length }}</div></div>
+    <div class="card"><strong>文件数</strong><div>{{ file_count }}</div></div>
+    <div class="card"><strong>KPI 结果数</strong><div>{{ kpis|length }}</div></div>
+    <div class="card"><strong>规则数</strong><div>{{ rules|length }}</div></div>
+    <div class="card"><strong>分组条目数</strong><div>{{ results|length }}</div></div>
   </div>
 
-    {% for item in results %}
-    <section style="margin-bottom: 22px; border: 1px solid #dbeafe; border-radius: 14px; overflow: hidden; background: #ffffff;">
-        <div style="padding: 10px 14px; background: #e0f2fe; color: #0c4a6e; font-weight: 700;">
-            {{ item.group_name }}
-        </div>
-        <div style="padding: 10px 14px; background: #f8fafc; color: #334155; font-weight: 600; border-top: 1px solid #e2e8f0;">
-            {{ item.source_name }}
-        </div>
-        <table style="margin-bottom: 0;">
+  {% if grouped_results %}
+  <div class="toc">
+    <strong>目录：</strong>
+    {% for group in grouped_results %}
+    <a href="#{{ group.group_anchor }}">{{ group.group_name }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for group in grouped_results %}
+  <section id="{{ group.group_anchor }}">
+    <div class="group-title">{{ group.group_name }}</div>
+    {% for item in group.items %}
+    <section class="result-card">
+        <div class="file-bar">{{ item.source_name }}</div>
+        {% if item.chart_preview_data_uri %}
+        <div class="preview"><img src="{{ item.chart_preview_data_uri }}" alt="{{ item.source_name }} 曲线工作表1预览"></div>
+        {% endif %}
+        <table>
             <thead><tr><th>名称</th><th>说明</th><th>单位</th><th>数值</th><th>规则</th><th>结果</th></tr></thead>
             <tbody>
             {% for kpi in item.kpis %}
@@ -310,6 +327,8 @@ DEFAULT_REPORT_TEMPLATE = '''<!DOCTYPE html>
             </tbody>
         </table>
     </section>
+    {% endfor %}
+  </section>
     {% endfor %}
 </body>
 </html>
@@ -1413,14 +1432,16 @@ def list_kpi_spec_entries() -> list[dict[str, Any]]:
     for path in _iter_python_files(KPI_SPECS_DIR):
         module = _load_python_module(path, "kpi_list")
         is_template = _is_system_template_path(path)
+        definition = getattr(module, "KPI_DEFINITION", {}) or {}
         entries.append(
             {
                 "path": path,
                 "display_name": "示例与详细讲解" if is_template else _definition_display_name(module, "KPI_DEFINITION", path.stem),
                 "is_template": is_template,
+                "sort_name": str(definition.get("name", "")).strip() or path.stem,
             }
         )
-    return sorted(entries, key=lambda item: (not item["is_template"], str(item["display_name"])))
+    return sorted(entries, key=lambda item: (not item["is_template"], str(item.get("sort_name", "")).lower(), str(item["display_name"])))
 
 
 def list_derived_signal_spec_entries() -> list[dict[str, Any]]:
@@ -1429,14 +1450,16 @@ def list_derived_signal_spec_entries() -> list[dict[str, Any]]:
     for path in _iter_python_files(DERIVED_SIGNALS_DIR):
         module = _load_python_module(path, "derived_signal_list")
         is_template = _is_system_template_path(path)
+        definition = getattr(module, "DERIVED_SIGNAL_DEFINITION", {}) or {}
         entries.append(
             {
                 "path": path,
                 "display_name": "示例与详细讲解" if is_template else _definition_display_name(module, "DERIVED_SIGNAL_DEFINITION", path.stem),
                 "is_template": is_template,
+                "sort_name": str(definition.get("name", "")).strip() or path.stem,
             }
         )
-    return sorted(entries, key=lambda item: (not item["is_template"], str(item["display_name"])))
+    return sorted(entries, key=lambda item: (not item["is_template"], str(item.get("sort_name", "")).lower(), str(item["display_name"])))
 
 
 def list_report_template_entries() -> list[dict[str, Any]]:
@@ -1648,6 +1671,23 @@ def write_text_config_file(path: str | Path, content: str) -> Path:
     target = Path(path)
     target.write_text(content, encoding="utf-8")
     return target
+
+
+def validate_report_template_content(path: str | Path, content: str) -> list[ConfigValidationIssue]:
+    try:
+        Environment().parse(content)
+    except TemplateSyntaxError as exc:
+        line = int(exc.lineno) if exc.lineno is not None else None
+        return [
+            ConfigValidationIssue(
+                path=Path(path),
+                message=str(exc).strip() or "模板语法错误",
+                line=line,
+                column=1 if line is not None else None,
+                code="jinja_syntax_error",
+            )
+        ]
+    return []
 
 
 def align_python_config_file_name(path: str | Path, definition_name: str) -> Path:
@@ -1965,6 +2005,18 @@ def create_report_template_file(display_name: str) -> Path:
     target = REPORT_TEMPLATES_DIR / f"{safe_stem}.html"
     if target.exists():
         raise FileExistsError(f"模板文件已存在: {target.name}")
+    target.write_text(DEFAULT_REPORT_TEMPLATE, encoding="utf-8")
+    return target
+
+
+def create_report_template_draft_file() -> Path:
+    _ensure_supporting_files()
+    base_stem = "custom_report"
+    target = REPORT_TEMPLATES_DIR / f"{base_stem}.html"
+    index = 2
+    while target.exists():
+        target = REPORT_TEMPLATES_DIR / f"{base_stem}_{index}.html"
+        index += 1
     target.write_text(DEFAULT_REPORT_TEMPLATE, encoding="utf-8")
     return target
 

@@ -61,7 +61,7 @@ from tcs_smart_analyzer.config import (
     build_system_interface_mapping_headers,
     create_derived_signal_draft_file,
     create_kpi_draft_file,
-    create_report_template_file,
+    create_report_template_draft_file,
     delete_formula_signal_definition,
     delete_kpi_group,
     delete_config_file,
@@ -87,6 +87,7 @@ from tcs_smart_analyzer.config import (
     save_kpi_group,
     save_interface_signal_tables,
     validate_python_config_content,
+    validate_report_template_content,
     validate_runtime_definition_files,
     write_text_config_file,
 )
@@ -1827,6 +1828,7 @@ class MainWindow(QMainWindow):
         self._editor_loading = False
         self._derived_signal_editor_dirty = False
         self._kpi_editor_dirty = False
+        self._template_editor_dirty = False
         self._signal_color_map: dict[str, QColor] = {}
         self._shared_chart_x_range: tuple[float, float] | None = None
         self._shared_cursor_colors = [QColor("#0f766e"), QColor("#9333ea")]
@@ -2023,7 +2025,7 @@ class MainWindow(QMainWindow):
             "color: #1a3553;"
             "background: transparent;"
             "}"
-            "QCheckBox#detailedLogToggle::indicator { width: 0px; height: 0px; }"
+            "QCheckBox#detailedLogToggle::indicator { width: 0px; height: 0px; margin: 0px; padding: 0px; border: none; background: transparent; }"
             "QCheckBox#detailedLogToggle:hover { color: #0f4c81; background: transparent; }"
         )
         self.detailed_log_checkbox.toggled.connect(self._sync_detailed_log_toggle_appearance)
@@ -2382,47 +2384,64 @@ class MainWindow(QMainWindow):
         choose_output_button = self._make_button("选择目录", QStyle.StandardPixmap.SP_DirOpenIcon)
         choose_output_button.clicked.connect(self.choose_output_dir)
         self.report_title_edit = QLineEdit("TCS 打滑控制自动分析报告")
-        self.active_template_combo = QComboBox()
-        self.export_html_checkbox = QCheckBox("HTML")
+        self.export_html_checkbox = QCheckBox()
+        self.export_html_checkbox.setObjectName("exportFormatToggle")
         self.export_html_checkbox.setChecked(True)
-        self.export_word_checkbox = QCheckBox("Word")
+        self.export_html_checkbox.toggled.connect(lambda checked: self._sync_labeled_toggle_appearance(self.export_html_checkbox, "HTML", checked))
+        self._sync_labeled_toggle_appearance(self.export_html_checkbox, "HTML", True)
+        self.export_word_checkbox = QCheckBox()
+        self.export_word_checkbox.setObjectName("exportFormatToggle")
         self.export_word_checkbox.setChecked(True)
+        self.export_word_checkbox.toggled.connect(lambda checked: self._sync_labeled_toggle_appearance(self.export_word_checkbox, "Word", checked))
+        self._sync_labeled_toggle_appearance(self.export_word_checkbox, "Word", True)
         export_row = QHBoxLayout()
         for widget in [self.export_html_checkbox, self.export_word_checkbox]:
+            widget.setStyleSheet(
+                "QCheckBox#exportFormatToggle {"
+                "spacing: 0;"
+                "padding: 0 2px;"
+                "font-weight: 600;"
+                "font-size: 13px;"
+                "color: #1a3553;"
+                "background: transparent;"
+                "}"
+                "QCheckBox#exportFormatToggle::indicator { width: 0px; height: 0px; margin: 0px; padding: 0px; border: none; background: transparent; }"
+                "QCheckBox#exportFormatToggle:hover { color: #0f4c81; background: transparent; }"
+            )
             export_row.addWidget(widget)
         export_row.addStretch(1)
-        export_current_button = self._make_button("导出当前结果", QStyle.StandardPixmap.SP_DialogSaveButton)
-        export_current_button.clicked.connect(self.export_selected_results)
-        open_output_button = self._make_button("打开输出目录", QStyle.StandardPixmap.SP_DirIcon)
+        open_output_button = self._make_button("打开报告目录", QStyle.StandardPixmap.SP_DirIcon)
         open_output_button.clicked.connect(self.open_output_dir)
-        export_row.addWidget(export_current_button)
         export_row.addWidget(open_output_button)
         settings_layout.addWidget(QLabel("报告目录"), 0, 0)
         settings_layout.addWidget(self.output_dir_edit, 0, 1)
         settings_layout.addWidget(choose_output_button, 0, 2)
         settings_layout.addWidget(QLabel("报告标题"), 1, 0)
         settings_layout.addWidget(self.report_title_edit, 1, 1, 1, 2)
-        settings_layout.addWidget(QLabel("当前模板"), 2, 0)
-        settings_layout.addWidget(self.active_template_combo, 2, 1, 1, 2)
-        settings_layout.addWidget(QLabel("自动导出"), 3, 0)
-        settings_layout.addLayout(export_row, 3, 1, 1, 2)
+        settings_layout.addWidget(QLabel("导出格式"), 2, 0)
+        settings_layout.addLayout(export_row, 2, 1, 1, 2)
 
         toolbar = QHBoxLayout()
+        toolbar.addWidget(QLabel("选择模板"))
         self.template_editor_combo = QComboBox()
         self.template_editor_combo.currentIndexChanged.connect(self.load_template_from_editor_combo)
         toolbar.addWidget(self.template_editor_combo, 1)
         self.template_create_button = self._make_button("新增模板", QStyle.StandardPixmap.SP_FileIcon)
+        self.template_open_dir_button = self._make_button("打开目录", QStyle.StandardPixmap.SP_DirOpenIcon)
         self.template_save_button = self._make_button("保存", QStyle.StandardPixmap.SP_DialogSaveButton)
         self.template_delete_button = self._make_button("删除", QStyle.StandardPixmap.SP_TrashIcon)
         self.template_create_button.clicked.connect(self.create_template_file)
+        self.template_open_dir_button.clicked.connect(self.open_template_directory)
         self.template_save_button.clicked.connect(self.save_template_file)
         self.template_delete_button.clicked.connect(self.delete_template_file)
-        for button in [self.template_create_button, self.template_save_button, self.template_delete_button]:
+        self.template_save_button.setVisible(False)
+        for button in [self.template_create_button, self.template_open_dir_button, self.template_delete_button]:
             toolbar.addWidget(button)
         self.template_editor_path_label = QLabel("未加载模板文件")
         self.template_editor_notice = QLabel("")
         self.template_editor_notice.setStyleSheet("color: #9a3412;")
         self.template_editor = JumpAwarePlainTextEdit(highlight_config_keys=False)
+        self.template_editor.textChanged.connect(self._on_template_editor_text_changed)
         self.template_search_panel = SearchReplaceBar(self.template_editor)
         layout.addWidget(settings_group)
         layout.addLayout(toolbar)
@@ -2591,6 +2610,9 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "detailed_log_checkbox"):
             return
         self.detailed_log_checkbox.setText("☑ 详细模式" if checked else "☐ 详细模式")
+
+    def _sync_labeled_toggle_appearance(self, checkbox: QCheckBox, label: str, checked: bool) -> None:
+        checkbox.setText(f"☑ {label}" if checked else f"☐ {label}")
 
     def _pump_ui_during_analysis(self) -> None:
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
@@ -2865,6 +2887,9 @@ class MainWindow(QMainWindow):
 
     def open_kpi_directory(self) -> None:
         self._open_directory(self._kpi_specs_dir)
+
+    def open_template_directory(self) -> None:
+        self._open_directory(get_config_file_paths()["report_templates_dir"])
 
     def _watched_config_directories(self) -> list[Path]:
         return [self._derived_signals_dir, self._kpi_specs_dir]
@@ -3281,10 +3306,14 @@ class MainWindow(QMainWindow):
         output_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir = output_dir
         export_targets = self._selected_export_targets()
-        template_path = self.active_template_combo.currentData()
+        detailed_mode = self.detailed_log_checkbox.isChecked()
+        template_path = self.template_editor_combo.currentData()
         report_title = self.report_title_edit.text().strip() or "TCS 打滑控制自动分析报告"
         analyzed_paths: list[str] = []
         analyzed_results: list[AnalysisResult] = []
+        success_messages: list[str] = []
+        failure_messages: list[str] = []
+        export_messages: list[tuple[str, str]] = []
         total_count = len(entries)
         self._analysis_in_progress = True
         self._analysis_total_count = total_count
@@ -3307,12 +3336,17 @@ class MainWindow(QMainWindow):
                     self.result_order.append(result_key)
                 analyzed_paths.append(str(path))
                 analyzed_results.append(result)
-                self.log("success", f"分析成功: {path.name}，分析组: {group_name}")
+                success_message = f"分析成功: {path.name}，分析组: {group_name}"
+                success_messages.append(success_message)
+                self.log("success", success_message)
                 self._update_analysis_step_progress(1.0, f"分析完成 {path.name}")
             except ConfigExecutionError as exc:
                 self._log_runtime_execution_error(path, exc)
+                failure_messages.append(f"分析失败: {path.name}: {exc.context.message}")
             except Exception as exc:  # noqa: BLE001
-                self.log("error", f"分析失败: {path.name}: {exc}")
+                failure_message = f"分析失败: {path.name}: {exc}"
+                failure_messages.append(failure_message)
+                self.log("error", failure_message)
                 self._update_analysis_step_progress(1.0, f"分析失败 {path.name}")
         self._update_queue_stats()
         self._refresh_result_scope_combo()
@@ -3320,43 +3354,41 @@ class MainWindow(QMainWindow):
             self._set_result_scope(analyzed_paths[0])
             self._warm_chart_cache_for_paths(analyzed_paths)
         if analyzed_results and "html" in export_targets:
-            self._export_batch_html(analyzed_results, output_dir, template_path, report_title)
+            html_output = self._export_batch_html(analyzed_results, output_dir, template_path, report_title, emit_log=False)
+            export_messages.append(("info", f"HTML 汇总导出: {html_output}"))
         if analyzed_results and "word" in export_targets:
-            self._export_batch_word(analyzed_results, output_dir, report_title)
+            word_output = self._export_batch_word(analyzed_results, output_dir, report_title, emit_log=False)
+            export_messages.append(("info", f"Word 汇总导出: {word_output}"))
         if not export_targets:
             self.log("warning", "分析已完成，当前未勾选自动导出格式。")
+            export_messages.append(("warning", "分析已完成，当前未勾选导出格式。"))
         self.analysis_progress_bar.setValue(1000)
         self.analysis_progress_bar.setFormat(f"分析完成 {len(analyzed_results)}/{total_count}")
         self._analysis_in_progress = False
+        if not detailed_mode:
+            for level, message in export_messages:
+                self.log(level, message)
+        if detailed_mode:
+            self.log("info", "详细汇总: 以下为本批次分析与导出结果")
+            for message in success_messages:
+                self.log("success", f"详细汇总: {message}")
+            for message in failure_messages:
+                self.log("error", f"详细汇总: {message}")
+            for level, message in export_messages:
+                self.log(level, f"详细汇总: {message}")
         self._pump_ui_during_analysis()
 
-    def _export_batch_html(self, results: list[AnalysisResult], output_dir: Path, template_path, report_title: str) -> None:
+    def _export_batch_html(self, results: list[AnalysisResult], output_dir: Path, template_path, report_title: str, emit_log: bool = True) -> Path:
         output = export_html(results, output_dir / batch_report_filename(report_title), template_path=template_path, report_title=report_title)
-        self.log("info", f"HTML 汇总导出: {output}")
+        if emit_log:
+            self.log("info", f"HTML 汇总导出: {output}")
+        return output
 
-    def _export_batch_word(self, results: list[AnalysisResult], output_dir: Path, report_title: str) -> None:
+    def _export_batch_word(self, results: list[AnalysisResult], output_dir: Path, report_title: str, emit_log: bool = True) -> Path:
         output = export_word(results, output_dir / batch_word_filename(report_title), report_title=report_title)
-        self.log("info", f"Word 汇总导出: {output}")
-
-    def export_selected_results(self) -> None:
-        results = self._display_results()
-        if not results:
-            QMessageBox.information(self, "无结果", "请先完成分析。")
-            return
-        export_targets = self._selected_export_targets()
-        if not export_targets:
-            QMessageBox.information(self, "未选择导出格式", "请至少勾选一种导出格式。")
-            return
-        output_dir = Path(self.output_dir_edit.text().strip() or self.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self.output_dir = output_dir
-        template_path = self.active_template_combo.currentData()
-        report_title = self.report_title_edit.text().strip() or "TCS 打滑控制自动分析报告"
-        if "html" in export_targets:
-            self._export_batch_html(results, output_dir, template_path, report_title)
-        if "word" in export_targets:
-            self._export_batch_word(results, output_dir, report_title)
-        self.log("success", f"已导出 {len(results)} 个结果。")
+        if emit_log:
+            self.log("info", f"Word 汇总导出: {output}")
+        return output
 
     def _warm_chart_cache_for_paths(self, paths: list[str]) -> None:
         unique_paths = list(dict.fromkeys(paths))
@@ -4355,11 +4387,20 @@ class MainWindow(QMainWindow):
     def refresh_cursor_displays(self) -> None:
         result = self._chart_result()
         if result is None:
-            self.chart_status_label.setText("光标未启用")
+            self.chart_status_label.setText("暂无分析结果，当前信号仅显示占位")
             for panel in self.chart_panels:
                 frame: ChartPanelFrame = panel["frame"]
                 frame.signal_table.set_cursor_column_visibility(0)
                 frame.view.set_cursor_state(0, [None, None])
+                signals: list[str] = panel.get("signals", [])
+                frame.signal_table.setRowCount(len(signals))
+                for row_index, signal_name in enumerate(signals):
+                    signal_item = frame.signal_table.item(row_index, 0)
+                    if signal_item is None or signal_item.text() != signal_name:
+                        signal_item = QTableWidgetItem(signal_name)
+                        frame.signal_table.setItem(row_index, 0, signal_item)
+                    frame.signal_table.setItem(row_index, 1, QTableWidgetItem(""))
+                    frame.signal_table.setItem(row_index, 2, QTableWidgetItem(""))
             self._refresh_chart_cursor_overlay()
             return
         frame_data = self._prepare_chart_frame(result)
@@ -4387,18 +4428,27 @@ class MainWindow(QMainWindow):
     def refresh_chart_panels(self) -> None:
         result = self._chart_result()
         if result is None:
-            self.chart_status_label.setText("光标未启用")
+            self.chart_status_label.setText("暂无分析结果，当前信号仅显示占位")
             self._shared_chart_x_range = None
             self._chart_frame_cache.clear()
             self._chart_sample_cache.clear()
             self._chart_sample_cache.clear()
+            self._signal_browser_all = list(self.plot_signal_names)
+            self.filter_signal_browser(self.signal_search_edit.text())
             for panel in self.chart_panels:
                 frame: ChartPanelFrame = panel["frame"]
                 frame.view.setChart(QChart())
                 frame.view.set_data_bounds(None, None)
                 frame.view.set_cursor_state(0, [None, None])
                 frame.signal_table.set_cursor_column_visibility(0)
-                frame.signal_table.setRowCount(0)
+                signals: list[str] = panel.get("signals", [])
+                frame.signal_table.setRowCount(len(signals))
+                for row_index, signal_name in enumerate(signals):
+                    signal_item = QTableWidgetItem(signal_name)
+                    signal_item.setData(PANEL_SIGNAL_BASE_COLOR_ROLE, self._signal_color(signal_name))
+                    frame.signal_table.setItem(row_index, 0, signal_item)
+                    frame.signal_table.setItem(row_index, 1, QTableWidgetItem(""))
+                    frame.signal_table.setItem(row_index, 2, QTableWidgetItem(""))
             self._refresh_chart_cursor_overlay()
             return
         self._ensure_default_cursor_positions()
@@ -4474,8 +4524,10 @@ class MainWindow(QMainWindow):
         current_template = str(self.template_editor_path) if self.template_editor_path else None
         derived_editor_text = self.derived_signal_editor.toPlainText() if hasattr(self, "derived_signal_editor") else ""
         kpi_editor_text = self.kpi_editor.toPlainText() if hasattr(self, "kpi_editor") else ""
+        template_editor_text = self.template_editor.toPlainText() if hasattr(self, "template_editor") else ""
         derived_editor_dirty = self._derived_signal_editor_dirty
         kpi_editor_dirty = self._kpi_editor_dirty
+        template_editor_dirty = self._template_editor_dirty
         current_group = str(self.kpi_group_editor_combo.currentData()) if hasattr(self, "kpi_group_editor_combo") and self.kpi_group_editor_combo.count() else "__all_kpis__"
         current_queue_group = str(self.queue_group_combo.currentData()) if hasattr(self, "queue_group_combo") and self.queue_group_combo.count() else "__all_kpis__"
         self.derived_signal_entries = list_derived_signal_spec_entries()
@@ -4524,7 +4576,6 @@ class MainWindow(QMainWindow):
         self._populate_entry_combo(self.derived_signal_editor_combo, self.derived_signal_entries, current_derived)
         self._populate_entry_combo(self.kpi_editor_combo, self.kpi_spec_entries, current_kpi)
         self._populate_entry_combo(self.template_editor_combo, self.template_entries, current_template)
-        self._populate_entry_combo(self.active_template_combo, self.template_entries, current_template)
         self._refresh_config_directory_watch_paths()
         self._refresh_result_scope_combo()
         self.load_mapping_editor()
@@ -4555,9 +4606,10 @@ class MainWindow(QMainWindow):
         elif current_template and "template" in preserved:
             self.template_editor_path = Path(current_template)
             self.template_editor_path_label.setText(current_template)
+            self._set_editor_plain_text(self.template_editor, template_editor_text)
             self._set_combo_to_path(self.template_editor_combo, Path(current_template))
-            self._set_combo_to_path(self.active_template_combo, Path(current_template))
             self._apply_editor_protection(Path(current_template), self.template_editor, self.template_delete_button, self.template_editor_notice, PROTECTED_TEMPLATE_FILES, self.template_save_button)
+            self._set_template_editor_dirty(template_editor_dirty)
         elif self.template_entries:
             self.load_template_file(Path(self.template_entries[0]["path"]), log_message=False)
         self._refresh_chart_sheet_tabs()
@@ -4712,6 +4764,8 @@ class MainWindow(QMainWindow):
             return self._confirm_pending_editor_changes("derived")
         if current_index == 1:
             return self._confirm_pending_editor_changes("kpi")
+        if current_index == 4:
+            return self._confirm_pending_editor_changes("template")
         return True
 
     def _open_kpi_editor_by_name(self, kpi_name: str, raw_input_name: str | None = None) -> bool:
@@ -4847,6 +4901,10 @@ class MainWindow(QMainWindow):
         self._kpi_editor_dirty = dirty
         self._update_editor_combo_marker(self.kpi_editor_combo, self.kpi_spec_entries, self.kpi_editor_path, dirty)
 
+    def _set_template_editor_dirty(self, dirty: bool) -> None:
+        self._template_editor_dirty = dirty
+        self._update_editor_combo_marker(self.template_editor_combo, self.template_entries, self.template_editor_path, dirty)
+
     def _on_derived_signal_editor_text_changed(self) -> None:
         if not self._editor_loading and self.derived_signal_editor_path is not None:
             self._clear_editor_issue_markers(self.derived_signal_editor)
@@ -4856,6 +4914,11 @@ class MainWindow(QMainWindow):
         if not self._editor_loading and self.kpi_editor_path is not None:
             self._clear_editor_issue_markers(self.kpi_editor)
             self._set_kpi_editor_dirty(True)
+
+    def _on_template_editor_text_changed(self) -> None:
+        if not self._editor_loading and self.template_editor_path is not None:
+            self._clear_editor_issue_markers(self.template_editor)
+            self._set_template_editor_dirty(True)
 
     def _confirm_editor_switch(self, title: str, message: str, save_callback) -> bool:
         dialog = QMessageBox(self)
@@ -4882,6 +4945,8 @@ class MainWindow(QMainWindow):
             return self._confirm_editor_switch("未保存的 KPI", "当前 KPI 文件尚未保存，是否先保存？", self.save_kpi_file)
         if editor_kind == "derived" and self._derived_signal_editor_dirty:
             return self._confirm_editor_switch("未保存的派生量", "当前派生量文件尚未保存，是否先保存？", self.save_derived_signal_file)
+        if editor_kind == "template" and self._template_editor_dirty:
+            return self._confirm_editor_switch("未保存的模板", "当前模板文件尚未保存，是否先保存？", self.save_template_file)
         return True
 
     def load_kpi_from_editor_combo(self, *_args) -> None:
@@ -4912,9 +4977,16 @@ class MainWindow(QMainWindow):
 
     def load_template_from_editor_combo(self, *_args) -> None:
         selected = self.template_editor_combo.currentData()
-        if selected:
-            self.load_template_file(Path(selected))
-            self._set_combo_to_path(self.active_template_combo, Path(selected))
+        if not selected:
+            return
+        target = Path(str(selected))
+        if self.template_editor_path is not None and target == self.template_editor_path:
+            return
+        if self._template_editor_dirty and not self._confirm_editor_switch("切换模板", "当前模板文件尚未保存，是否先保存？", self.save_template_file):
+            if self.template_editor_path is not None:
+                self._set_combo_to_path(self.template_editor_combo, self.template_editor_path)
+            return
+        self.load_template_file(target)
 
     def _apply_editor_protection(
         self,
@@ -4960,10 +5032,11 @@ class MainWindow(QMainWindow):
         self.template_editor_path = path
         self.template_editor_path_label.setText(str(path))
         self._set_editor_plain_text(self.template_editor, read_text_config_file(path))
+        self._clear_editor_issue_markers(self.template_editor)
         self.template_editor.focus_named_input(None)
         self._set_combo_to_path(self.template_editor_combo, path)
-        self._set_combo_to_path(self.active_template_combo, path)
         self._apply_editor_protection(path, self.template_editor, self.template_delete_button, self.template_editor_notice, PROTECTED_TEMPLATE_FILES, self.template_save_button)
+        self._set_template_editor_dirty(False)
         if log_message:
             self.log("info", f"已载入报告模板: {path}")
 
@@ -4997,15 +5070,15 @@ class MainWindow(QMainWindow):
         self.load_derived_signal_file(path)
 
     def create_template_file(self) -> None:
-        text, ok = QInputDialog.getText(self, "新增模板", "请输入模板名称")
-        if ok and text.strip():
-            try:
-                path = create_report_template_file(text.strip())
-            except Exception as exc:  # noqa: BLE001
-                QMessageBox.warning(self, "创建失败", str(exc))
-                return
-            self.reload_runtime_configs(log_message=False)
-            self.load_template_file(path)
+        if not self._confirm_pending_editor_changes("template"):
+            return
+        try:
+            path = create_report_template_draft_file()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "创建失败", str(exc))
+            return
+        self.reload_runtime_configs(log_message=False)
+        self.load_template_file(path)
 
     def save_kpi_file(self) -> None:
         if self.kpi_editor_path is None:
@@ -5082,9 +5155,23 @@ class MainWindow(QMainWindow):
         if self.template_editor_path is None:
             return
         try:
-            write_text_config_file(self.template_editor_path, self.template_editor.toPlainText())
+            updated_text = self.template_editor.toPlainText()
+            issues = validate_report_template_content(self.template_editor_path, updated_text)
+            write_text_config_file(self.template_editor_path, updated_text)
             self.reload_runtime_configs(log_message=False, preserve_editors={"template"})
             self.template_editor.document().setModified(False)
+            self._set_template_editor_dirty(False)
+            if issues:
+                self._apply_editor_issue_markers(self.template_editor, issues)
+                self.template_editor.focus_location(issues[0].line, issues[0].column)
+                self.log(
+                    "warning",
+                    f"模板文件已保存，但模板语法检查未通过: {self._issue_summary_text(issues[0])}",
+                    link_target={"path": str(self.template_editor_path), "line": issues[0].line, "column": issues[0].column},
+                )
+                QMessageBox.warning(self, "模板语法检查未通过", "文件已保存，但模板语法存在错误，已用红色高亮。修复后导出时将无法正确渲染。")
+                return
+            self._clear_editor_issue_markers(self.template_editor)
             self.log("success", f"模板文件已保存: {self.template_editor_path}")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "保存失败", str(exc))
@@ -5121,9 +5208,14 @@ class MainWindow(QMainWindow):
         if not self._confirm_pending_editor_changes("kpi"):
             event.ignore()
             return
+        if not self._confirm_pending_editor_changes("template"):
+            event.ignore()
+            return
         super().closeEvent(event)
 
     def delete_template_file(self) -> None:
+        if not self._confirm_pending_editor_changes("template"):
+            return
         if self._delete_text_config(self.template_editor_path, PROTECTED_TEMPLATE_FILES, "删除模板"):
             self.template_editor_path = None
             self.reload_runtime_configs(log_message=False)

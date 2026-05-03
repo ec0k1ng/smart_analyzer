@@ -53,7 +53,7 @@ def _load_timeseries_file(
     elif suffix in {".xlsx", ".xls"}:
         dataframe = _load_excel_file(path, selected_source_columns=selected_columns)
     elif suffix == ".dat":
-        dataframe = _load_dat_file(path)
+        dataframe = _load_dat_file(path, selected_source_columns=selected_columns)
     elif suffix == ".mat":
         dataframe = _load_mat_file(path)
     elif suffix == ".blf":
@@ -61,7 +61,7 @@ def _load_timeseries_file(
     elif suffix == ".asc":
         dataframe = _load_asc_file(path, required_signals=required_signals)
     else:
-        dataframe = _load_mdf_file(path)
+        dataframe = _load_mdf_file(path, selected_source_columns=selected_columns)
 
     dataframe.columns = [_clean_column_name(column) for column in dataframe.columns]
     dataframe.attrs["source_columns_before_time_normalization"] = list(dataframe.columns)
@@ -84,6 +84,10 @@ def inspect_timeseries_file_columns(file_path: str | Path) -> tuple[list[str], l
         original_columns = _inspect_csv_columns(path)
     elif suffix in {".xlsx", ".xls"}:
         original_columns = _inspect_excel_columns(path)
+    elif suffix == ".dat":
+        original_columns = _inspect_dat_columns(path)
+    elif suffix in {".mdf", ".mf4"}:
+        original_columns = _inspect_mdf_columns(path)
     else:
         return None
     if not original_columns:
@@ -375,12 +379,47 @@ def _is_viable_tabular_frame(dataframe: pd.DataFrame) -> bool:
     return not dataframe.empty and dataframe.shape[1] >= 2
 
 
-def _load_dat_file(path: Path) -> pd.DataFrame:
-    measurement_frame = _try_load_dat_as_measurement_file(path)
+def _inspect_dat_columns(path: Path) -> list[str]:
+    measurement_columns = _inspect_mdf_columns(path)
+    if measurement_columns:
+        return measurement_columns
+
+    raw_bytes = path.read_bytes()
+    if b"\x00" in raw_bytes[:4096]:
+        return []
+
+    try:
+        text = _decode_text_bytes(raw_bytes)
+    except UnsupportedFileTypeError:
+        return []
+
+    return _inspect_text_dat_columns(text)
+
+
+def _inspect_text_dat_columns(text: str) -> list[str]:
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    inca_header = _inspect_inca_dat_columns(lines)
+    if inca_header:
+        return inca_header
+
+    header_index, delimiter = _detect_dat_table(lines)
+    header_line = lines[header_index].lstrip("#;/* ")
+    if delimiter == r"\s+":
+        parts = re.split(delimiter, header_line)
+    else:
+        parts = header_line.split(delimiter)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _load_dat_file(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame:
+    measurement_frame = _try_load_dat_as_measurement_file(path, selected_source_columns=selected_source_columns)
     if measurement_frame is not None:
         return measurement_frame
 
-    inca_frame = _try_load_inca_dat(path)
+    inca_frame = _try_load_inca_dat(path, selected_source_columns=selected_source_columns)
     if inca_frame is not None:
         return inca_frame
 
@@ -404,6 +443,9 @@ def _load_dat_file(path: Path) -> pd.DataFrame:
         read_options["sep"] = delimiter
     else:
         read_options["sep"] = delimiter
+    selected_set = {_clean_column_name(name) for name in (selected_source_columns or []) if str(name).strip()}
+    if selected_set:
+        read_options["usecols"] = lambda column_name: _clean_column_name(column_name) in selected_set
     dataframe = pd.read_csv(io.StringIO(candidate_text), **read_options)
     dataframe = dataframe.dropna(axis=1, how="all")
     if dataframe.empty or dataframe.shape[1] < 2:
@@ -411,7 +453,31 @@ def _load_dat_file(path: Path) -> pd.DataFrame:
     return dataframe
 
 
-def _try_load_inca_dat(path: Path) -> pd.DataFrame | None:
+def _inspect_inca_dat_columns(lines: list[str]) -> list[str]:
+    header_line_idx: int | None = None
+    for idx, raw_line in enumerate(lines[:100]):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("#", ";", "//", "/*", "'")):
+            continue
+        delimiter = _detect_inca_delimiter(line)
+        parts = _split_inca_line(line, delimiter)
+        if len(parts) < 2:
+            continue
+        numeric_count = sum(_looks_numeric(part) for part in parts)
+        if numeric_count < len(parts) * 0.5:
+            header_line_idx = idx
+            break
+    if header_line_idx is None:
+        return []
+    header_raw = lines[header_line_idx].strip()
+    delimiter = _detect_inca_delimiter(header_raw)
+    headers_raw = _split_inca_line(header_raw, delimiter)
+    return [_strip_unit_suffix(h.strip().strip('"').strip("'")) for h in headers_raw]
+
+
+def _try_load_inca_dat(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame | None:
     raw_bytes = path.read_bytes()
     if b"\x00" in raw_bytes[:4096]:
         return None
@@ -513,6 +579,11 @@ def _try_load_inca_dat(path: Path) -> pd.DataFrame | None:
     elif len(headers_clean) > dataframe.shape[1]:
         dataframe.columns = headers_clean[: dataframe.shape[1]]
 
+    selected_set = {_clean_column_name(name) for name in (selected_source_columns or []) if str(name).strip()}
+    if selected_set:
+        keep_columns = [column for column in dataframe.columns if _clean_column_name(column) in selected_set]
+        dataframe = dataframe.loc[:, keep_columns]
+
     dataframe = dataframe.dropna(axis=1, how="all")
     for col in dataframe.columns:
         dataframe[col] = pd.to_numeric(dataframe[col], errors="coerce")
@@ -550,9 +621,9 @@ def _next_non_empty_line(lines: list[str], start: int) -> int | None:
     return None
 
 
-def _try_load_dat_as_measurement_file(path: Path) -> pd.DataFrame | None:
+def _try_load_dat_as_measurement_file(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame | None:
     try:
-        dataframe = _load_mdf_file(path)
+        dataframe = _load_mdf_file(path, selected_source_columns=selected_source_columns)
     except Exception:  # noqa: BLE001
         return None
     if dataframe.empty or dataframe.shape[1] < 2:
@@ -623,7 +694,25 @@ def _load_mat_file(path: Path) -> pd.DataFrame:
     return pd.DataFrame(series_map)
 
 
-def _load_mdf_file(path: Path) -> pd.DataFrame:
+def _inspect_mdf_columns(path: Path) -> list[str]:
+    try:
+        from asammdf import MDF
+    except ImportError:
+        return []
+
+    try:
+        mdf = MDF(str(path))
+    except Exception:
+        return []
+
+    channels_db = getattr(mdf, "channels_db", {}) or {}
+    channel_names = [str(name).strip() for name in channels_db.keys() if str(name).strip()]
+    if channel_names:
+        return ["timestamps", *channel_names]
+    return []
+
+
+def _load_mdf_file(path: Path, selected_source_columns: Iterable[str] | None = None) -> pd.DataFrame:
     try:
         from asammdf import MDF
     except ImportError as exc:
@@ -633,7 +722,15 @@ def _load_mdf_file(path: Path) -> pd.DataFrame:
     dataframe = _try_decode_bus_mdf(mdf, path)
     if dataframe is None:
         try:
-            dataframe = mdf.to_dataframe()
+            selected_channels = [
+                str(name).strip()
+                for name in (selected_source_columns or [])
+                if str(name).strip() and str(name).strip() not in {"time_s", "timestamps", "timestamp", "time"}
+            ]
+            if selected_channels and hasattr(mdf, "filter"):
+                dataframe = mdf.filter(selected_channels).to_dataframe()
+            else:
+                dataframe = mdf.to_dataframe()
         except Exception as exc:
             raise UnsupportedFileTypeError(f"MDF/MF4 文件解析失败：{exc}") from exc
     dataframe = dataframe.reset_index()

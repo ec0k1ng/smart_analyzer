@@ -7,6 +7,7 @@ from tcs_smart_analyzer.config.editable_configs import (
 	align_python_config_file_name,
 	create_kpi_draft_file,
 	create_kpi_spec_file,
+	create_report_template_draft_file,
 	create_report_template_file,
 	create_rule_spec_file,
 	delete_formula_signal_definition,
@@ -45,6 +46,7 @@ from tcs_smart_analyzer.config.editable_configs import (
 	sync_legacy_deprecated_configs,
 	sync_interface_mapping_file,
 	validate_python_config_content,
+	validate_report_template_content,
 	validate_runtime_definition_files,
 	write_text_config_file,
 )
@@ -59,6 +61,7 @@ __all__ = [
 	"create_derived_signal_spec_file",
 	"create_kpi_draft_file",
 	"create_kpi_spec_file",
+	"create_report_template_draft_file",
 	"create_report_template_file",
 	"create_rule_spec_file",
 	"delete_formula_signal_definition",
@@ -101,6 +104,7 @@ __all__ = [
 	"sync_legacy_deprecated_configs",
 	"sync_interface_mapping_file",
 	"validate_python_config_content",
+	"validate_report_template_content",
 	"validate_runtime_definition_files",
 	"write_text_config_file",
 ]

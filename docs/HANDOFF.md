@@ -2,7 +2,7 @@
 
 ## 1. 接手入口顺序
 
-进入仓库后不要先猜代码，也不要先翻单个 Python 文件。请按下面顺序接手：
+进入仓库后按下面顺序建立上下文，不要先凭记忆猜实现：
 
 1. README.md
 2. docs/PROJECT_PLAYBOOK.md
@@ -17,139 +17,94 @@
 11. docs/RULES.md
 12. docs/DECISIONS.md
 13. docs/ROADMAP.md
+14. docs/CHANGELOG.md
 
-## 2. 当前你要先知道什么
+## 2. 当前发布阶段
 
-### 2.1 当前真实产品模型
+- 当前代码状态可以视为发布候选版本，包版本仍是 1.2.0。
+- 本轮核心目标已从“补功能”转为“收口文档、清理噪音、准备发布”。
+- 安装程序标准构建入口仍是 scripts/build_installer.ps1，最终发布目录仍是 installer_release/。
+- 本轮尚未重新构建安装程序，因此当前仓库状态是“代码和文档已收口，待执行发布构建”。
 
-- 当前只做 TCS 打滑控制分析。
-- 当前主结果是文件级 KPI 与其判定结果，不再是旧版事件窗口模型。
-- 当前用户只需要理解 raw_inputs 与接口映射表中的实际信号名。
-- 当前规则判定由 KPI 文件本身生成，不再依赖独立 rule_specs 运行链。
+## 3. 当前真实产品模型
 
-### 2.2 当前最重要的技术事实
+- 当前只聚焦 TCS 打滑控制分析。
+- 当前主结果模型是“文件级 KPI + 判定结果 + 曲线复核”，不再维护旧事件窗口叙事。
+- 用户只需要理解 raw_inputs 与接口映射表中填写的实际信号名。
+- 当前规则展示来自 KPI 文件中的 threshold、pass_condition、rule_description 等字段，不再把独立 rule_specs 写成主执行入口。
+
+## 4. 本轮已经落地的关键变化
+
+### 4.1 数据加载与映射链路
+
+- DAT、MDF、MF4 已补上与 CSV/Excel 一致的“先探测列/通道，再确认映射，再按需读取”的两段式链路。
+- DAT 会优先尝试测量文件解析，再回退到文本表格解析；文本 DAT 与 INCA DAT 都支持按命中列过滤读取。
+- MDF/MF4 支持按 selected_source_columns 过滤通道，减少无关读取。
+- BLF/ASC 的详细日志已明确写出“按需 DBC 解码，不会展开全部总线信号”，避免误解为全量解码。
+- 显式接口映射仍保持严格模式，不再静默回退到标准名或模糊匹配。
+
+### 4.2 GUI 与模板编辑
+
+- 派生量与 KPI 下拉列表顺序已调整为“示例在前，其余按 name 字母序”。
+- 详细模式与导出格式切换都改成无蓝点的文本勾选样式。
+- 曲线页在没有分析结果时也允许添加和保留信号，只显示占位内容，不阻断配置。
+- 模板编辑器已具备：未保存标记、Ctrl+S 保存、Jinja 语法校验、错误高亮、打开模板目录、新建草稿模板。
+- 模板选择已收敛到模板编辑区下拉框，不再保留重复且无效的“当前模板”行。
+
+### 4.3 HTML / Word 报告
+
+- 报告上下文已经统一为 grouped_results，按“KPI 分组 -> 数据名称 -> KPI 列表”组织。
+- HTML 默认模板、demo 模板和示例模板都已支持左侧固定目录、分组/文件层级、曲线快照和收起/展开目录。
+- HTML 正文已改成居中且不随目录显隐左右偏移。
+- Word 报告第一页已改成真实目录内容，不再显示“右键更新域以生成目录”占位提示。
+- Word 正文已使用 Heading 1 / Heading 2 承载分组与文件层级，导航窗格可直接反映层级结构。
+- Word 与 HTML 都会插入基于曲线工作表 1 的截图预览，截图保留多子框、时间轴、纵轴刻度和颜色一致的图例名称。
+
+### 4.4 Word 目录跳转修复
+
+- Word 目录项已改为内部 hyperlink + bookmark 方案。
+- 书签插入位置已调整到段落属性之后，避免 Word 自动修复 XML 顺序导致跳转错位。
+- 分组与文件锚点都已改成更短的安全格式，避免文件级锚点过长导致跳回标题行。
+- 目录可跳转文本已移除下划线样式。
+
+## 5. 当前最重要的技术事实
 
 - 接口映射系统表第一列是 raw_input_name，第二列是 from，第三列起才是用户填写的实际信号名。
-- 当前仓库正式派生量只有两个：slip_ratio、tcs_target_slip_ratio_global。
-- 当前仓库已经没有 tcs_active_avg_slip_ratio 正式文件。
-- 当前正式 KPI 文件名必须与 KPI_DEFINITION["name"] 一致，当前正式 KPI 包含 vehicle_shake_intensity 和 tcs_max_control_time。
-- 当前安装程序唯一输出目录为 installer_release/，标准构建脚本为 scripts/build_installer.ps1。
-- 当前发布基线已是 V1.2，对应包版本 1.2.0。
-- 当前 DAT 读取链路会先尝试按测量文件解析，再回退到文本表格解析，并在加载出口清理类似 \XCP: 1 的协议尾缀列名。
-- 当前 BLF/ASC 解码会按接口映射和 raw_inputs 解析出当前分析真正需要的实际信号，而不是盲解全部 DBC 信号。
-- 当前曲线页子框信号表宽度支持自动扩展并在同一工作表内同步。
-- 当前新一轮分析会清空旧结果但保留队列；曲线缓存已经按结果实例隔离。
-- 当前 GUI 启动会在 QApplication 上保留主窗口强引用，并显式 showNormal/raise_/activateWindow。
-- 当前空子框也会保留时间轴与坐标轴；共享光标覆盖层会按所有子框贯穿，不再依赖该子框是否有信号。
-- 当前接口映射若显式填写真实信号名，则匹配策略改为严格模式，不再回退到标准名或模糊近似兜底。
-- 当前已删除所有运行时默认补值信号逻辑；缺失真实信号时必须报错或保持缺失，不能静默伪造数据。
-- 当前分析入口会先强制保存映射表编辑状态，再进入运行时重载和分析。
+- 正式派生量目录仍在 src/tcs_smart_analyzer/config/derived_signals/，正式 KPI 目录仍在 src/tcs_smart_analyzer/config/kpi_specs/。
+- chart_view_state.json 继续作为曲线页工作表与子框布局记忆文件。
+- 报告模板目录是 src/tcs_smart_analyzer/config/report_templates/，当前模板已包含可编辑 HTML 示例和 demo 模板。
+- Word 报告的曲线快照依赖 Qt/SVG 离屏渲染；CLI 或测试环境必须允许惰性初始化 QGuiApplication。
 
-## 3. 当前已验证到什么程度
+## 6. 当前已验证到什么程度
 
-### 3.1 已验证
+### 6.1 已验证
 
-- 主分析链、入口位置、配置目录和导出路径已经核对。
-- 最近一轮文档矩阵已同步到当前代码事实。
-- pytest tests/test_loaders.py tests/test_engine_pipeline.py 已执行，18 项全部通过。
-- pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py 已执行，52 项全部通过。
-- scripts/gui_smoke_check.py 已重新执行，并覆盖空末尾子框时间轴、缩放联动、光标贯穿和面板内顺序重排。
-- main_window.py、engine.py、loaders.py、signal_mapping.py 的 py_compile 已通过。
+- 已实际执行 pytest tests/test_signal_mapping.py tests/test_loaders.py tests/test_engine_pipeline.py tests/test_editable_configs.py tests/test_rule_settings.py tests/test_exporters.py，76 项全部通过。
+- GUI 离屏冒烟脚本 scripts/gui_smoke_check.py 已通过，最近一次结果为 20 / 20。
+- src/tcs_smart_analyzer/ui/main_window.py、src/tcs_smart_analyzer/reporting/exporters.py、src/tcs_smart_analyzer/core/engine.py、src/tcs_smart_analyzer/data/loaders.py、src/tcs_smart_analyzer/config/editable_configs.py 的 py_compile 已通过。
+- Word 目录 hyperlink、bookmark、短锚点长度和书签顺序都有自动化断言覆盖。
 
-### 3.2 未重新验证
+### 6.2 仍建议在发版前手工确认
 
-- 本轮没有重新执行完整 unittest/pytest 全量基线。
-- 本轮没有重新执行真实总线样本验证。
-- 本轮没有拿用户真实 INCA DAT 样本做最终兼容确认。
-- 用户机器仍反馈“分析后曲线页首次显示不完整”，因此当前 GUI 修复只能视为已做代码缓解、待真实机确认。
+- 用真实 Word 客户端打开一份新导出的 docx，手工点一次首页目录中的分组和数据名称。
+- 用浏览器打开 HTML 报告，确认左侧目录、截图和正文布局与预期一致。
+- 如本次需要交付安装包，再执行一次安装程序构建与安装后打开验证。
 
-## 4. 当前最可能踩坑的地方
+## 7. 当前明确已清理的仓库噪音
 
-1. 误以为 signal_aliases 仍是主逻辑。
-2. 误以为 rule_specs 目录仍参与执行。
-3. 误以为 trend_source 可以写成任意临时列名。
-4. 误以为当前测试套件是全绿。
-5. 误以为 tcs_active_avg_slip_ratio 仍然存在。
-6. 误以为接口映射表的第一列和第二列都可由用户编辑。
-7. 误以为 GUI 离屏冒烟通过就等于真实机器上的曲线页首次显示问题已经彻底消失。
+- 已删除根目录里的 pytest_exporters_failure.txt 失败残留文件。
+- 交接、状态、验证、待办、变更记录与根 README 已同步到当前事实，不再保留“旧测试阻塞仍是主问题”的描述。
 
-## 5. 当前阻塞与临时规避方案
+## 8. 当前不要再踩的坑
 
-### 阻塞 1：测试基线仍引用旧派生量
+1. 不要再把 signal_aliases 写成当前主映射机制。
+2. 不要再把 rule_specs 写成当前主执行入口。
+3. 不要再把 Word 目录跳转理解为传统 TOC 域；当前实现是内部 hyperlink + bookmark。
+4. 不要再把 DAT 写成“只支持文本 DAT”；当前事实包含测量文件优先解析与文本回退。
+5. 不要再把“导出模板只是简单表格”写进任何文档；当前报告已经包含目录、分组结构和曲线截图。
 
-现象：
+## 9. 下一位如果继续推进，优先做什么
 
-- test_editable_configs、test_engine_pipeline 等测试仍引用 tcs_active_avg_slip_ratio。
-
-规避方案：
-
-- 接手前先接受“当前代码事实优先于旧测试”。
-- 如果要继续开发，优先修测试基线，再扩功能。
-
-### 阻塞 2：导出相关测试与当前映射状态存在偏差
-
-现象：
-
-- 部分导出测试会在 build_signal_mapping 阶段因为关键字段缺失而失败。
-
-规避方案：
-
-- 优先检查测试是否显式准备了当前接口映射前置条件。
-
-### 阻塞 3：真实 INCA DAT 变体仍缺样本闭环
-
-现象：
-
-- 代码已新增 DAT 测量文件优先解析路径，但仓库内仍没有用户真实 INCA DAT 样本可做最终确认。
-
-规避方案：
-
-- 若用户继续反馈 DAT 失败，优先索取失败样本或最小可复现片段。
-- 不要再把 DAT 支持写死成“仅文本 DAT”，当前事实已不是这样。
-
-### 阻塞 4：曲线页首次显示不完整问题仍缺真实机稳定复现
-
-现象：
-
-- 用户机器上仍反馈分析完成后首次切到曲线页时显示不完整，增删子框后恢复。
-
-当前已做缓解：
-
-- 图表布局收尾已延后到事件循环下一拍。
-- 切到主标签“曲线”时会主动触发 refresh_chart_panels。
-- GUI 冒烟脚本已加入 chart_plot_area_full_enough 探针，但当前不要再把整套冒烟写成已通过。
-- 本轮已额外通过离屏定向验证：子框信号 Ctrl+W 局部隐藏/显示、hidden_signals 持久化、接口映射真实信号列可缩减到 1 列。
-
-规避方案：
-
-- 优先在用户机器上记录稳定复现步骤，再决定是继续追加兜底重建，还是加诊断日志。
-
-## 6. 当前新增/关键文件说明
-
-- docs/IMPLEMENTATION_LOGIC.md：当前真实实现逻辑与 GUI 工作流说明
-- src/tcs_smart_analyzer/config/interface_mapping.xlsx：接口映射主文件
-- src/tcs_smart_analyzer/config/chart_view_state.json：曲线页面板配置记忆文件
-- src/tcs_smart_analyzer/config/kpi_groups.json：KPI 分组定义文件
-- scripts/gui_smoke_check.py：GUI 离屏冒烟脚本
-- scripts/build_installer.ps1：安装程序标准构建脚本
-- installer_release/：当前版本安装程序唯一发布目录
-
-## 7. 建议下一位优先做什么
-
-1. 先修测试，让测试基线与当前派生量/KPI 清单一致。
-2. 再在真实机器上复现并定位曲线页首次显示不完整问题。
-3. 然后做 BLF/MF4 + DBC 与真实 INCA DAT 的样本回归。
-
-## 8. 当前已过时说法与正确事实
-
-- 旧说法：系统主要靠别名自动猜列。
-  正确事实：当前对用户可见的主模型是 raw_inputs + 手工接口映射名。
-
-- 旧说法：rule_specs 是当前规则入口。
-  正确事实：当前用户可见判定逻辑来自 KPI 文件。
-
-- 旧说法：当前测试已经全部通过。
-  正确事实：当前最近一轮聚焦回归和 GUI 冒烟都通过，但完整基线本轮未重刷，详见 PROJECT_STATUS.md。
-
-- 旧说法：tcs_active_avg_slip_ratio 是当前正式派生量之一。
-  正确事实：当前仓库中已不存在该正式文件。
+1. 执行一次发布前完整回归和手工导出验收。
+2. 若本次要交付安装包，运行 scripts/build_installer.ps1 并验证 installer_release/ 产物。
+3. 若后续还有功能开发，再补真实 BLF/MF4 + DBC 和真实 INCA DAT 的样本级工程回归。

@@ -11,6 +11,7 @@ from tkinter import BooleanVar, StringVar, Tk, filedialog, ttk
 APP_NAME = "Apex Automata Insight Studio"
 APP_VERSION = "V1.7"
 APP_EXE_NAME = f"{APP_NAME}.exe"
+ICON_FILE_NAME = "apex_insight.ico"
 PAYLOAD_ZIP_NAME = "app_payload.zip"
 DEFAULT_INSTALL_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Programs" / APP_NAME
 START_MENU_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
@@ -25,6 +26,10 @@ def _bundle_dir() -> Path:
 
 def _payload_zip_path() -> Path:
     return _bundle_dir() / "payload" / PAYLOAD_ZIP_NAME
+
+
+def _window_icon_path() -> Path:
+    return _bundle_dir() / "assets" / ICON_FILE_NAME
 
 
 def _create_shortcut(target_path: Path, shortcut_path: Path) -> None:
@@ -61,6 +66,9 @@ class InstallerApp:
         self.root.minsize(920, 560)
         self.root.resizable(False, False)
         self.root.configure(bg="#f0f4fa")
+        icon_path = _window_icon_path()
+        if icon_path.exists():
+            self.root.iconbitmap(default=str(icon_path))
 
         self.install_dir_var = StringVar(value=str(DEFAULT_INSTALL_DIR))
         self.desktop_shortcut_var = BooleanVar(value=True)

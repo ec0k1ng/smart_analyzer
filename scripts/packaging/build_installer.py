@@ -13,6 +13,7 @@ APP_NAME = "Apex Automata Insight Studio"
 PYTHON_PACKAGE_VERSION_FILE = Path("src") / "tcs_smart_analyzer" / "__init__.py"
 MAIN_FILE = Path("src") / "tcs_smart_analyzer" / "main.py"
 CONFIG_DIR = Path("src") / "tcs_smart_analyzer" / "config"
+ICON_FILE = Path("scripts") / "packaging" / "assets" / "apex_insight.ico"
 RELEASE_DIR = Path("installer_release")
 TEMP_ROOT = Path(".build_installer")
 APP_DIST = TEMP_ROOT / "app_dist"
@@ -39,7 +40,7 @@ def _read_version(project_root: Path) -> tuple[str, str]:
 
 
 def _zip_directory_contents(source_dir: Path, target_zip: Path) -> None:
-    with zipfile.ZipFile(target_zip, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(target_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as zip_file:
         for path in sorted(source_dir.rglob("*")):
             if path.is_dir():
                 continue
@@ -68,6 +69,9 @@ def main() -> int:
     python_exe = sys.executable
     data_separator = os.pathsep
     config_data = f"{project_root / CONFIG_DIR}{data_separator}tcs_smart_analyzer/config"
+    icon_file = project_root / ICON_FILE
+    if not icon_file.exists():
+        raise RuntimeError(f"Application icon was not found: {icon_file}")
 
     _run(
         [
@@ -88,6 +92,8 @@ def main() -> int:
             str(project_root / APP_SPEC),
             "--paths",
             str(project_root / "src"),
+            "--icon",
+            str(icon_file),
             "--collect-data",
             "tcs_smart_analyzer",
             "--add-data",
@@ -120,8 +126,12 @@ def main() -> int:
             str(project_root / INSTALLER_WORK),
             "--specpath",
             str(project_root / INSTALLER_SPEC),
+            "--icon",
+            str(icon_file),
             "--add-data",
             f"{project_root / PAYLOAD_ZIP}{data_separator}payload",
+            "--add-data",
+            f"{icon_file}{data_separator}assets",
             str(project_root / "scripts" / "packaging" / "installer_bootstrap.py"),
         ],
         project_root,

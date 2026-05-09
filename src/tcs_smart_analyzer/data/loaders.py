@@ -66,7 +66,8 @@ def _load_timeseries_file(
     dataframe.columns = [_clean_column_name(column) for column in dataframe.columns]
     dataframe.attrs["source_columns_before_time_normalization"] = list(dataframe.columns)
     dataframe.attrs["source_column_redirects"] = {}
-    return _normalize_time_axis_column(dataframe)
+    normalized = _normalize_time_axis_column(dataframe)
+    return _coerce_time_axis_to_seconds(normalized)
 
 
 def load_timeseries_file(
@@ -132,6 +133,39 @@ def _normalize_time_axis_column(dataframe: pd.DataFrame) -> pd.DataFrame:
         return normalized
 
     return dataframe
+
+
+def _coerce_time_axis_to_seconds(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe.empty or "time_s" not in dataframe.columns:
+        return dataframe
+
+    time_series = dataframe["time_s"]
+    non_empty_mask = _non_empty_value_mask(time_series)
+    if not bool(non_empty_mask.any()):
+        return dataframe
+
+    numeric_time = pd.to_numeric(time_series, errors="coerce")
+    numeric_success_rate = float(numeric_time.loc[non_empty_mask].notna().mean())
+    if numeric_success_rate >= 0.8:
+        normalized = dataframe.copy()
+        normalized["time_s"] = numeric_time
+        return normalized
+
+    datetime_time = pd.to_datetime(time_series, errors="coerce", utc=True)
+    datetime_success_rate = float(datetime_time.loc[non_empty_mask].notna().mean())
+    if datetime_success_rate < 0.8:
+        return dataframe
+
+    first_valid_time = datetime_time.dropna().iloc[0]
+    normalized = dataframe.copy()
+    normalized["time_s"] = (datetime_time - first_valid_time).dt.total_seconds()
+    normalized.attrs["time_axis_origin"] = first_valid_time.isoformat()
+    return normalized
+
+
+def _non_empty_value_mask(series: pd.Series) -> pd.Series:
+    stringified = series.astype("string").str.strip()
+    return series.notna() & stringified.notna() & stringified.ne("")
 
 
 def _strip_unit_suffix(name: str) -> str:

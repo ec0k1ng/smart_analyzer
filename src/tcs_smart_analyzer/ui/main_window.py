@@ -108,6 +108,7 @@ PANEL_SIGNAL_BASE_COLOR_ROLE = Qt.ItemDataRole.UserRole + 22
 PROTECTED_DERIVED_FILES = {"00_example_and_guide.py"}
 PROTECTED_KPI_FILES = {"00_example_and_guide.py"}
 PROTECTED_TEMPLATE_FILES = {"00_example_and_guide.html"}
+APP_PRODUCT_NAME = "Apex Automata Insight Studio"
 
 APP_STYLE = """
 * {
@@ -1853,8 +1854,10 @@ class MainWindow(QMainWindow):
         self._config_dir_reload_timer.timeout.connect(self._reload_runtime_configs_from_external_change)
         self._runtime_config_snapshot: set[tuple[str, str]] = set()
         self._last_analysis_runtime_config_snapshot: set[tuple[str, str]] | None = None
+        self._pending_chart_auto_fit = True
+        self._last_chart_scope_path: str | None = None
 
-        self.setWindowTitle("自动化数据分析工具")
+        self.setWindowTitle(APP_PRODUCT_NAME)
         self.resize(1720, 1060)
         self.setStyleSheet(APP_STYLE)
         self._build_ui()
@@ -1921,6 +1924,7 @@ class MainWindow(QMainWindow):
             self._make_button("添加目录", QStyle.StandardPixmap.SP_DirOpenIcon),
             self._make_button("移除选中", QStyle.StandardPixmap.SP_TrashIcon),
             self._make_button("清空", QStyle.StandardPixmap.SP_DialogResetButton),
+            self._make_button("打开报告目录", QStyle.StandardPixmap.SP_DirIcon),
             self._make_button("开始分析", QStyle.StandardPixmap.SP_MediaPlay),
         ]:
             toolbar.addWidget(button)
@@ -1930,12 +1934,13 @@ class MainWindow(QMainWindow):
             " QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #60a5fa, stop:1 #3b82f6); }"
             " QPushButton:pressed { background: #1d4ed8; }"
         )
-        toolbar.itemAt(4).widget().setStyleSheet(_accent_btn_style)
+        toolbar.itemAt(5).widget().setStyleSheet(_accent_btn_style)
         toolbar.itemAt(0).widget().clicked.connect(self.add_files)
         toolbar.itemAt(1).widget().clicked.connect(self.add_folder)
         toolbar.itemAt(2).widget().clicked.connect(self.remove_selected_queue_items)
         toolbar.itemAt(3).widget().clicked.connect(self.clear_queue)
-        toolbar.itemAt(4).widget().clicked.connect(self.analyze_all)
+        toolbar.itemAt(4).widget().clicked.connect(self.open_output_dir)
+        toolbar.itemAt(5).widget().clicked.connect(self.analyze_all)
         toolbar.addStretch(1)
 
         self.queue_stats_label = QLabel("当前 0 个文件，已完成分析 0 个")
@@ -2383,7 +2388,7 @@ class MainWindow(QMainWindow):
         self.output_dir_edit = QLineEdit(str(self.output_dir))
         choose_output_button = self._make_button("选择目录", QStyle.StandardPixmap.SP_DirOpenIcon)
         choose_output_button.clicked.connect(self.choose_output_dir)
-        self.report_title_edit = QLineEdit("TCS 打滑控制自动分析报告")
+        self.report_title_edit = QLineEdit("自动化数据分析报告")
         self.export_html_checkbox = QCheckBox()
         self.export_html_checkbox.setObjectName("exportFormatToggle")
         self.export_html_checkbox.setChecked(True)
@@ -2410,9 +2415,6 @@ class MainWindow(QMainWindow):
             )
             export_row.addWidget(widget)
         export_row.addStretch(1)
-        open_output_button = self._make_button("打开报告目录", QStyle.StandardPixmap.SP_DirIcon)
-        open_output_button.clicked.connect(self.open_output_dir)
-        export_row.addWidget(open_output_button)
         settings_layout.addWidget(QLabel("报告目录"), 0, 0)
         settings_layout.addWidget(self.output_dir_edit, 0, 1)
         settings_layout.addWidget(choose_output_button, 0, 2)
@@ -3466,7 +3468,10 @@ class MainWindow(QMainWindow):
         key = self.result_scope_combo.currentData()
         if key is None:
             return
-        self.selected_chart_path = str(key)
+        selected_path = str(key)
+        if self.selected_chart_path != selected_path:
+            self._pending_chart_auto_fit = True
+        self.selected_chart_path = selected_path
         self.refresh_result_views()
 
     def select_previous_result(self) -> None:
@@ -4430,6 +4435,8 @@ class MainWindow(QMainWindow):
         if result is None:
             self.chart_status_label.setText("暂无分析结果，当前信号仅显示占位")
             self._shared_chart_x_range = None
+            self._pending_chart_auto_fit = True
+            self._last_chart_scope_path = None
             self._chart_frame_cache.clear()
             self._chart_sample_cache.clear()
             self._chart_sample_cache.clear()
@@ -4454,6 +4461,8 @@ class MainWindow(QMainWindow):
         self._ensure_default_cursor_positions()
         frame_data = self._prepare_chart_frame(result)
         sampled_frame = self._sampled_chart_frame(result, frame_data)
+        current_scope_path = self.selected_chart_path or str(result.context.source_path)
+        auto_fit_requested = self._pending_chart_auto_fit or self._last_chart_scope_path != current_scope_path
         self._signal_browser_all = sorted({*self.plot_signal_names, *[str(column) for column in frame_data.columns]})
         self.filter_signal_browser(self.signal_search_edit.text())
         reference_x_range = self._shared_chart_x_range
@@ -4471,7 +4480,10 @@ class MainWindow(QMainWindow):
             frame.view.set_data_bounds(x_bounds, y_bounds)
             frame.view.set_cursor_state(self.cursor_mode, self.cursor_positions)
             frame.signal_table.set_cursor_column_visibility(self.cursor_mode)
-            frame.view.restore_axis_ranges(reference_x_range or previous_x_range, previous_y_range, x_bounds, y_bounds)
+            if auto_fit_requested:
+                frame.view.restore_axis_ranges(x_bounds, y_bounds, x_bounds, y_bounds)
+            else:
+                frame.view.restore_axis_ranges(reference_x_range or previous_x_range, previous_y_range, x_bounds, y_bounds)
             if panel_index == 0:
                 self._shared_chart_x_range = frame.view.current_axis_ranges()[0]
             frame.signal_table.setRowCount(len(signals))
@@ -4486,6 +4498,8 @@ class MainWindow(QMainWindow):
             self._apply_chart_panel_signal_emphasis(panel)
         self._auto_adjust_signal_table_width()
         self.chart_status_label.setText(self._cursor_summary_text(frame_data))
+        self._last_chart_scope_path = current_scope_path
+        self._pending_chart_auto_fit = False
         self._schedule_chart_layout_refresh()
 
     def on_panel_signal_selection_changed(self, panel_id: int) -> None:

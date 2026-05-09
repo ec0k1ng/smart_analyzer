@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 关键决策记录
+# Apex Automata Insight Studio 关键决策记录
 
 ## D-001 当前用户输入模型收敛为 raw_inputs + 手工接口映射
 

@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 
-APP_NAME = "自动化数据分析工具"
+APP_NAME = "Apex Automata Insight Studio"
 PYTHON_PACKAGE_VERSION_FILE = Path("src") / "tcs_smart_analyzer" / "__init__.py"
 MAIN_FILE = Path("src") / "tcs_smart_analyzer" / "main.py"
 CONFIG_DIR = Path("src") / "tcs_smart_analyzer" / "config"

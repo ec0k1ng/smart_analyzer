@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 当前实现逻辑说明
+# Apex Automata Insight Studio 当前实现逻辑说明
 
 ## 1. 这份文档的用途
 

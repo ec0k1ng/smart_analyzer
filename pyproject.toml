@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tcs-smart-analyzer"
-version = "1.2.0"
-description = "Offline desktop analyzer for TCS log data with GUI, bus decoding and report export"
+name = "apex-automata-insight-studio"
+version = "1.7.0"
+description = "Automated data analysis desktop studio with GUI, bus decoding and report export"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -35,8 +35,8 @@ full = [
 ]
 
 [project.scripts]
-tcs-smart-analyzer = "tcs_smart_analyzer.main:main"
-tcs-smart-analyzer-cli = "tcs_smart_analyzer.cli:main"
+apex-automata-insight-studio = "tcs_smart_analyzer.main:main"
+apex-automata-insight-cli = "tcs_smart_analyzer.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

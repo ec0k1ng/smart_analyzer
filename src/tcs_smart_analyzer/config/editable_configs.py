@@ -205,7 +205,7 @@ DEFAULT_DERIVED_SIGNAL_GUIDE_TEMPLATE = """GUIDE_TEXT = '''派生量示例与详
 3. 派生量用于承载多个 KPI 共用、且希望只计算一次的中间序列。
 
 给 AI 的格式化要求：
-请为 TCS Smart Analyzer 生成一个派生量 Python 文件，严格按下面格式输出，不要解释：
+请为 Apex Automata Insight Studio 生成一个派生量 Python 文件，严格按下面格式输出，不要解释：
 
 from __future__ import annotations
 
@@ -344,7 +344,7 @@ DEFAULT_REPORT_GUIDE_TEMPLATE = '''<!--
 4. 如果你本地已经有 Word 报告模板，也可以把 Word 模板的版式要求完整描述给 AI，让 AI 翻译成 HTML 模板代码。
 
 给 AI 的格式化要求：
-请为 TCS Smart Analyzer 生成一个 HTML 报告模板，严格输出一个可直接保存为 .html 的 Jinja2 模板文件，不要解释。
+请为 Apex Automata Insight Studio 生成一个 HTML 报告模板，严格输出一个可直接保存为 .html 的 Jinja2 模板文件，不要解释。
 
 模板中可直接使用的变量：
 - report_title: 报告标题字符串。
@@ -425,7 +425,7 @@ KPI_GUIDE_TEMPLATE = '''GUIDE_TEXT = """KPI 示例与详细讲解
 3. 现在不再单独维护规则文件。每一项 KPI 自己同时定义“数值如何算”和“结果如何判定”。
 
 给 AI 的格式化要求：
-请为 TCS Smart Analyzer 生成一个 KPI Python 文件，严格按下面格式输出，不要解释：
+请为 Apex Automata Insight Studio 生成一个 KPI Python 文件，严格按下面格式输出，不要解释：
 
 from __future__ import annotations
 

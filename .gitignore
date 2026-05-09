@@ -1,4 +1,8 @@
 __pycache__/
 *.py[cod]
 /installer_release/
+/outputs/
+/outputs_batch/
+/outputs_real/
 /outputs_gui/
+/src/*.egg-info/

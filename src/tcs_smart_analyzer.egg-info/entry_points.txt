@@ -1,3 +1,0 @@
-[console_scripts]
-tcs-smart-analyzer = tcs_smart_analyzer.main:main
-tcs-smart-analyzer-cli = tcs_smart_analyzer.cli:main

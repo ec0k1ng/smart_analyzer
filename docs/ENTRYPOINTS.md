@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 入口与外部文件说明
+# Apex Automata Insight Studio 入口与外部文件说明
 
 ## 1. 程序入口
 
@@ -7,12 +7,12 @@
 - 主模块：src/tcs_smart_analyzer/main.py
 - 主窗口：src/tcs_smart_analyzer/ui/main_window.py
 - GUI 启动函数：src/tcs_smart_analyzer/ui/main_window.py 中的 launch_app()
-- 安装后命令：tcs-smart-analyzer
+- 安装后命令：apex-automata-insight-studio
 
 ### CLI
 
 - CLI 模块：src/tcs_smart_analyzer/cli.py
-- 安装后命令：tcs-smart-analyzer-cli
+- 安装后命令：apex-automata-insight-cli
 
 ## 2. 关键配置入口
 

@@ -8,8 +8,8 @@ from pathlib import Path
 from tkinter import BooleanVar, StringVar, Tk, filedialog, ttk
 
 
-APP_NAME = "自动化数据分析工具"
-APP_VERSION = "V1.2"
+APP_NAME = "Apex Automata Insight Studio"
+APP_VERSION = "V1.7"
 APP_EXE_NAME = f"{APP_NAME}.exe"
 PAYLOAD_ZIP_NAME = "app_payload.zip"
 DEFAULT_INSTALL_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Programs" / APP_NAME

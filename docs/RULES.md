@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 规则与判定治理说明
+# Apex Automata Insight Studio 规则与判定治理说明
 
 ## 1. 当前规则模型
 

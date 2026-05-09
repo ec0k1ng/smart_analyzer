@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 当前阶段完整需求说明书
+# Apex Automata Insight Studio 当前阶段完整需求说明书
 
 ## 1. 产品目标
 

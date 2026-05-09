@@ -6,7 +6,7 @@ GUIDE_TEXT = '''派生量示例与详细讲解
 3. 派生量用于承载多个 KPI 共用、且希望只计算一次的中间序列。
 
 给 AI 的格式化要求：
-请为 TCS Smart Analyzer 生成一个派生量 Python 文件，严格按下面格式输出，不要解释：
+请为 Apex Automata Insight Studio 生成一个派生量 Python 文件，严格按下面格式输出，不要解释：
 
 from __future__ import annotations
 

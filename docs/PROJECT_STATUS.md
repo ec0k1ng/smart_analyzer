@@ -1,4 +1,4 @@
-# 自动化数据分析工具 当前状态
+# Apex Automata Insight Studio 当前状态
 
 ## 1. 当前阶段结论
 
@@ -60,9 +60,10 @@
 ## 4. 当前发布状态
 
 - 当前发布版本基线仍为 V1.2，对应包版本 1.2.0。
-- 当前产品发布名称为“自动化数据分析工具”。
+- 当前产品发布名称为 Apex Automata Insight Studio。
 - 项目内安装程序唯一输出目录为 installer_release/。
 - 标准安装程序构建脚本为 scripts/build_installer.ps1。
+- 当前 GUI / CLI 对外命令名为 apex-automata-insight-studio / apex-automata-insight-cli。
 - 当前代码与文档已整理到可发布候选状态，但本轮尚未重新构建安装程序。
 
 ## 5. 当前验证现状

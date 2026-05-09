@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 项目治理手册
+# Apex Automata Insight Studio 项目治理手册
 
 ## 1. 目标
 

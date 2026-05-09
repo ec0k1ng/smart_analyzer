@@ -135,6 +135,56 @@ class LoaderTests(unittest.TestCase):
             self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
             self.assertAlmostEqual(float(dataframe.iloc[1]["time_s"]), 0.1)
 
+    def test_iso_datetime_time_column_is_converted_to_relative_seconds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.csv"
+            path.write_text(
+                "Timestamp,wheel_speed_fl\n"
+                "2026-02-04T11:19:16.068000,10\n"
+                "2026-02-04T11:19:16.168000,12\n",
+                encoding="utf-8",
+            )
+
+            dataframe = load_timeseries_file(path)
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+            self.assertAlmostEqual(float(dataframe.iloc[0]["time_s"]), 0.0)
+            self.assertAlmostEqual(float(dataframe.iloc[1]["time_s"]), 0.1, places=6)
+            self.assertEqual(dataframe.attrs.get("time_axis_origin"), "2026-02-04T11:19:16.068000+00:00")
+
+    def test_existing_time_s_datetime_values_are_converted_to_relative_seconds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.csv"
+            path.write_text(
+                "time_s,wheel_speed_fl\n"
+                "2026-02-04T11:19:16.068000,10\n"
+                "2026-02-04T11:19:16.168000,12\n",
+                encoding="utf-8",
+            )
+
+            dataframe = load_timeseries_file(path)
+
+            self.assertEqual(list(dataframe.columns), ["time_s", "wheel_speed_fl"])
+            self.assertAlmostEqual(float(dataframe.iloc[0]["time_s"]), 0.0)
+            self.assertAlmostEqual(float(dataframe.iloc[1]["time_s"]), 0.1, places=6)
+
+    def test_iso_datetime_time_column_keeps_leading_empty_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "sample.csv"
+            path.write_text(
+                "Timestamp,wheel_speed_fl\n"
+                ",10\n"
+                "2026-02-04T11:19:16.068000,11\n"
+                "2026-02-04T11:19:16.168000,12\n",
+                encoding="utf-8",
+            )
+
+            dataframe = load_timeseries_file(path)
+
+            self.assertTrue(pd.isna(dataframe.iloc[0]["time_s"]))
+            self.assertAlmostEqual(float(dataframe.iloc[1]["time_s"]), 0.0)
+            self.assertAlmostEqual(float(dataframe.iloc[2]["time_s"]), 0.1, places=6)
+
     def test_binary_dat_file_raises_helpful_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "binary.dat"

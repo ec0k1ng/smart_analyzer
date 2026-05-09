@@ -1,4 +1,4 @@
-# TCS Smart Analyzer 架构设计
+# Apex Automata Insight Studio 架构设计
 
 ## 1. 架构目标
 

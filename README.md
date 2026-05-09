@@ -1,6 +1,6 @@
-# TCS Smart Analyzer
+# Apex Automata Insight Studio
 
-离线运行的 TCS 打滑控制数据分析桌面工具。当前项目已经具备“导入数据、接口映射、派生量计算、KPI 计算、结果审阅、曲线核查、HTML/Word 汇总导出”的完整闭环，当前仓库状态已整理到发布候选阶段，文档和代码都必须按当前事实维护，不允许再依赖旧会话记忆或历史设计猜测。
+离线运行的自动化数据分析桌面工具。当前项目已经具备“导入数据、接口映射、派生量计算、KPI 计算、结果审阅、曲线核查、HTML/Word 汇总导出”的完整闭环；虽然仓库内默认规则与样例仍以 TCS 场景为主，但产品命名和发布形态不再局限于 TCS。当前仓库状态已整理到发布候选阶段，文档和代码都必须按当前事实维护，不允许再依赖旧会话记忆或历史设计猜测。
 
 ## 先看哪里
 
@@ -78,7 +78,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
 python -m pip install -e .[gui]
-tcs-smart-analyzer
+apex-automata-insight-studio
 ```
 
 只跑 CLI 或测试：
@@ -96,8 +96,8 @@ python -m pip install -e .[mdf]
 CLI 样例：
 
 ```powershell
-tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
-tcs-smart-analyzer-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs --config .\sample_data\analysis_profile_example.json
+apex-automata-insight-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs
+apex-automata-insight-cli --input .\sample_data\tcs_demo.csv --output-dir .\outputs --config .\sample_data\analysis_profile_example.json
 ```
 
 ## 当前已知事实
